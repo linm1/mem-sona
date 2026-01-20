@@ -268,22 +268,24 @@ export const processResource = internalAction({
     let nodesCreated = 0;
     for (const entity of extractionResult.entities) {
       try {
-        await ctx.runAction(internal.graph.createNodeInternal, {
+        const result = await ctx.runAction(internal.graph.createNodeInternal, {
           name: entity.name,
           type: entity.type,
           properties: {
             description: entity.description,
           },
         });
-        nodesCreated++;
-        console.log(`Created node: ${entity.name} (${entity.type})`);
-      } catch (error) {
-        // Node may already exist - log but continue
-        if (error instanceof Error && error.message.includes("already exists")) {
-          console.log(`Node already exists: ${entity.name} (${entity.type})`);
+
+        // Only count newly created nodes, not existing ones
+        if (result.wasCreated) {
+          nodesCreated++;
+          console.log(`Created node: ${entity.name} (${entity.type})`);
         } else {
-          console.error(`Failed to create node: ${entity.name}`, error);
+          console.log(`Node already exists: ${entity.name} (${entity.type})`);
         }
+      } catch (error) {
+        // Handle any other unexpected errors
+        console.error(`Failed to process node: ${entity.name}`, error);
       }
     }
 

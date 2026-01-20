@@ -70,10 +70,15 @@ export const generateNodeEmbedding = internalAction({
  * Internal: Create a new graph node with automatic embedding generation.
  * This internal action is called from extraction.ts and within upsertEdge.
  *
+ * IDEMPOTENT BEHAVIOR (Option A1 - NO-OP):
+ * - If node already exists: Returns existing node ID with wasCreated=false
+ * - Existing node data is NOT modified (properties, embedding, timestamps preserved)
+ * - Safe to call multiple times with same name+type
+ *
  * @param name - Node name (e.g., "TypeScript", "mem-sona")
  * @param type - Node type (must be one of: project, tool, skill, concept)
  * @param properties - Optional flexible metadata (description, status, url)
- * @returns Node ID
+ * @returns { nodeId: string, wasCreated: boolean } - Node ID and creation status
  */
 export const createNodeInternal = internalAction({
   args: {
@@ -85,7 +90,7 @@ export const createNodeInternal = internalAction({
       url: v.optional(v.string()),
     })),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ nodeId: string; wasCreated: boolean }> => {
     // Validate node type
     if (!VALID_NODE_TYPES.includes(args.type as NodeType)) {
       throw new Error(
@@ -99,8 +104,9 @@ export const createNodeInternal = internalAction({
       type: args.type,
     });
 
+    // Option A1 (NO-OP): Return existing node ID without modifying any data
     if (existing) {
-      throw new Error(`Node already exists: ${args.name} (${args.type})`);
+      return { nodeId: existing._id, wasCreated: false };
     }
 
     // Generate embedding with description from properties
@@ -118,7 +124,7 @@ export const createNodeInternal = internalAction({
       embedding,
     });
 
-    return nodeId;
+    return { nodeId, wasCreated: true };
   },
 });
 
@@ -126,10 +132,12 @@ export const createNodeInternal = internalAction({
  * Public wrapper: Create a new graph node (accessible from MCP server).
  * This public action calls the internal createNodeInternal action.
  *
+ * IDEMPOTENT: Returns existing node metadata if node already exists.
+ *
  * @param name - Node name (e.g., "TypeScript", "mem-sona")
  * @param type - Node type (must be one of: project, tool, skill, concept)
  * @param properties - Optional flexible metadata (description, status, url)
- * @returns Node ID
+ * @returns { nodeId: string, wasCreated: boolean } - Node ID and creation status
  */
 export const createNode = action({
   args: {
@@ -141,7 +149,7 @@ export const createNode = action({
       url: v.optional(v.string()),
     })),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<{ nodeId: string; wasCreated: boolean }> => {
     return await ctx.runAction(internal.graph.createNodeInternal, args);
   },
 });
@@ -488,13 +496,13 @@ export const upsertEdgeInternal = internalAction({
 
     if (!fromNode) {
       // Create fromNode if it doesn't exist
-      const fromNodeId = await ctx.runAction(internal.graph.createNodeInternal, {
+      const result = await ctx.runAction(internal.graph.createNodeInternal, {
         name: args.fromName,
         type: args.fromType,
         properties: {},
-      }) as Id<"graphNodes">;
+      });
       fromNode = await ctx.runQuery(internal.graph.getNodeInternal, {
-        nodeId: fromNodeId,
+        nodeId: result.nodeId as Id<"graphNodes">,
       });
       if (!fromNode) {
         throw new Error("Failed to create fromNode");
@@ -509,13 +517,13 @@ export const upsertEdgeInternal = internalAction({
 
     if (!toNode) {
       // Create toNode if it doesn't exist
-      const toNodeId = await ctx.runAction(internal.graph.createNodeInternal, {
+      const result = await ctx.runAction(internal.graph.createNodeInternal, {
         name: args.toName,
         type: args.toType,
         properties: {},
-      }) as Id<"graphNodes">;
+      });
       toNode = await ctx.runQuery(internal.graph.getNodeInternal, {
-        nodeId: toNodeId,
+        nodeId: result.nodeId as Id<"graphNodes">,
       });
       if (!toNode) {
         throw new Error("Failed to create toNode");

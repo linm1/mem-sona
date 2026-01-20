@@ -272,17 +272,22 @@ export class ToolHandlers {
       // Build properties object (simplified - no redundant construction)
       const properties = description ? { description } : {};
 
-      // Call Convex graph.createNode action
-      const nodeId = await this.convex.action(api.graph.createNode, {
+      // Call Convex graph.createNode action (returns metadata with wasCreated flag)
+      const result = await this.convex.action(api.graph.createNode, {
         name,
         type,
         properties,
       });
 
+      // Adjust message based on whether node was newly created or already existed
+      const statusMessage = result.wasCreated
+        ? "Entity created successfully"
+        : "Entity already exists (existing node returned)";
+
       return {
         content: [{
           type: "text",
-          text: `Entity created successfully.\nName: ${name}\nType: ${type}${description ? `\nDescription: ${description}` : ""}\nNode ID: ${nodeId}`
+          text: `${statusMessage}.\nName: ${name}\nType: ${type}${description ? `\nDescription: ${description}` : ""}\nNode ID: ${result.nodeId}`
         }]
       };
     } catch (error: any) {

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **mem-sona** is a personal memory infrastructure for AI coding agents (Claude Code, GitHub Copilot, Cursor). It enables persistent, evolving knowledge about the user across sessions by combining file-based categorical memory with a knowledge graph for relationship mapping.
 
-**Status**: Pre-implementation (PRD complete)
+**Status**: Core implementation complete (Sprint-003)
 
 ## Tech Stack
 
@@ -23,24 +23,104 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 mem-sona/
-├── convex/           # Backend functions, database schema
-│   ├── schema.ts     # Full data model (file + graph)
-│   ├── resources.ts  # Raw log storage
-│   ├── items.ts      # Atomic fact CRUD + vector search
-│   ├── categories.ts # Summary evolution
-│   ├── graph.ts      # Node/edge CRUD, traversal queries
-│   ├── extraction.ts # LLM-based fact + entity extraction
-│   ├── retrieval.ts  # Hybrid search implementation
-│   ├── maintenance.ts # Cron job handlers
-│   └── crons.ts      # Scheduled job definitions
-├── mcp-server/       # MCP server for Claude Code, Copilot, Cursor
+├── convex/               # Backend functions, database schema
+│   ├── schema.ts         # Full data model (file + graph)
+│   ├── resources.ts      # Raw log storage
+│   ├── items.ts          # Atomic fact CRUD + vector search
+│   ├── categories.ts     # Summary evolution
+│   ├── graph.ts          # Node/edge CRUD, traversal queries
+│   ├── extraction.ts     # LLM-based fact + entity extraction
+│   ├── retrieval.ts      # Hybrid search implementation
+│   ├── maintenance.ts    # Cron job handlers
+│   ├── crons.ts          # Scheduled job definitions
+│   └── utils/            # Shared utilities (NEW)
+│       ├── gemini.ts     # Gemini API retry logic + JSON parsing
+│       └── voyage.ts     # Voyage AI embedding utilities
+├── mcp-server/           # MCP server for Claude Code, Copilot, Cursor
 │   └── src/
-│       ├── index.ts  # MCP server entry
-│       ├── tools.ts  # Tool definitions
-│       └── handlers.ts # Tool implementations
-├── web/              # Optional Next.js dashboard
-└── PRD_mem-sona.md   # Product Requirements Document
+│       ├── index.ts      # MCP server entry
+│       ├── tools.ts      # Tool definitions
+│       ├── handlers.ts   # Tool implementations
+│       └── types.ts      # Type definitions for tool arguments (NEW)
+├── web/                  # Optional Next.js dashboard
+└── PRD_mem-sona.md       # Product Requirements Document
 ```
+
+## Shared Utilities
+
+### Voyage AI Utilities (`convex/utils/voyage.ts`)
+
+**ALWAYS use these utilities for embedding generation.** Do NOT create new VoyageAI client instances elsewhere.
+
+```typescript
+import { generateEmbedding, generateNodeEmbedding, VOYAGE_CONFIG } from "./utils/voyage";
+
+// For text embeddings (items, queries)
+const embedding = await generateEmbedding(text, "document"); // or "query" for search
+// Returns: number[] (1024 dimensions)
+
+// For graph node embeddings
+const embedding = await generateNodeEmbedding(name, type, description);
+// Returns: number[] (1024 dimensions)
+
+// Access config constants
+VOYAGE_CONFIG.model      // "voyage-4"
+VOYAGE_CONFIG.dimensions // 1024
+```
+
+**Key exports:**
+- `VOYAGE_CONFIG` - Centralized config (model name, dimensions)
+- `createVoyageClient()` - Creates configured client (throws if no API key)
+- `generateEmbedding(text, inputType)` - Standard text embedding
+- `generateNodeEmbedding(name, type, description)` - Graph node embedding
+
+### Gemini Utilities (`convex/utils/gemini.ts`)
+
+**ALWAYS use these utilities for Gemini API calls.** Provides retry logic and JSON parsing.
+
+```typescript
+import { callGeminiWithRetry, parseGeminiJson, MAX_RETRIES } from "./utils/gemini";
+
+// Call Gemini with automatic retry (exponential backoff)
+const responseText = await callGeminiWithRetry(model, prompt);
+
+// Parse JSON from Gemini response (handles ```json code blocks)
+const result = parseGeminiJson<MyType>(responseText);
+```
+
+**Key exports:**
+- `MAX_RETRIES` - Default retry attempts (3)
+- `RETRY_DELAY_BASE` - Base delay in ms (1000)
+- `callGeminiWithRetry(model, prompt, retries?)` - Retries with exponential backoff
+- `parseGeminiJson<T>(responseText)` - Parses JSON, strips markdown code blocks
+
+### MCP Type Definitions (`mcp-server/src/types.ts`)
+
+**ALWAYS use these types for MCP tool arguments.** Provides type safety for handlers.
+
+```typescript
+import type {
+  MemorySearchArgs,
+  MemoryAddFactArgs,
+  MemoryGetContextArgs,
+  MemoryLogSessionArgs,
+  MemoryAddEntityArgs,
+  MemoryAddRelationshipArgs,
+  MemoryGetProjectArgs,
+} from "./types.js";
+
+import { VALID_ENTITY_TYPES, isValidEntityType } from "./types.js";
+
+// Validate entity type
+if (!isValidEntityType(type)) {
+  // Handle invalid type
+}
+```
+
+**Key exports:**
+- `MemorySearchArgs`, `MemoryAddFactArgs`, etc. - Type definitions for each tool
+- `VALID_ENTITY_TYPES` - Array of valid entity types: `["project", "tool", "skill", "concept"]`
+- `isValidEntityType(type)` - Type guard for entity type validation
 
 ## Critical API Integration Requirements
 
@@ -230,7 +310,32 @@ npx convex deploy
 
 # Run MCP server (after building)
 cd mcp-server && npm run build && node dist/index.js
+
+# TypeScript compilation checks (MANDATORY before commits)
+cd convex && npx tsc --noEmit       # Check Convex backend
+cd mcp-server && npx tsc --noEmit   # Check MCP server
 ```
+
+## Development Workflow
+
+### Before Making Changes
+
+1. **Read relevant files first** - Never modify code you haven't read
+2. **Check shared utilities** - Use existing utilities in `convex/utils/` and `mcp-server/src/types.ts`
+3. **Understand patterns** - Review similar existing code for consistency
+
+### When Adding New Features
+
+1. **Use shared utilities** - Don't duplicate Gemini/Voyage/type validation logic
+2. **Add explicit types** - All handler return types, array types, callback parameters
+3. **Follow error patterns** - Result objects for graceful degradation, throws for critical failures
+4. **Update constants** - Add new constants to the "Important Constants" table above
+
+### Before Committing
+
+1. **TypeScript compilation** - Run `npx tsc --noEmit` in both `convex/` and `mcp-server/`
+2. **No implicit any** - Fix all type errors before committing
+3. **Update CLAUDE.md** - Document new utilities, constants, or patterns
 
 ## Mandatory Quality Gates
 
@@ -276,6 +381,91 @@ cd mcp-server && npm run build && node dist/index.js
 - API testing: Logs showing real API responses
 - Compilation: Screenshot or log of `npx tsc --noEmit` passing
 - Integration: End-to-end test results
+
+## Code Patterns & Constants
+
+### Important Constants
+
+| Constant | Location | Value | Purpose |
+|----------|----------|-------|---------|
+| `RELEVANCE_THRESHOLD` | `retrieval.ts` | 0.7 | Minimum score for search results |
+| `VOYAGE_CONFIG.dimensions` | `utils/voyage.ts` | 1024 | Embedding vector dimensions |
+| `VOYAGE_CONFIG.model` | `utils/voyage.ts` | "voyage-4" | Embedding model name |
+| `MAX_RETRIES` | `utils/gemini.ts` | 3 | Gemini API retry attempts |
+| `RETRY_DELAY_BASE` | `utils/gemini.ts` | 1000 | Base retry delay (ms) |
+| `VALID_ENTITY_TYPES` | `graph.ts`, `mcp/types.ts` | ["project", "tool", "skill", "concept"] | Allowed node types |
+
+### Error Handling Patterns
+
+**Result Object Pattern (for graceful degradation):**
+Used when failures are expected and should not crash pipelines.
+
+```typescript
+// Example: extraction.ts - ExtractionResult
+interface ExtractionResult {
+  facts: ExtractedFact[];
+  entities: ExtractedEntity[];
+  relationships: ExtractedRelationship[];
+  success: boolean;  // Check this before using results
+  error?: string;    // Error message if success is false
+}
+
+// Caller handles failure gracefully
+const result = await extractFacts(content);
+if (!result.success) {
+  console.error(result.error);
+  // Continue processing other items
+}
+```
+
+**Throwing Pattern (for critical failures):**
+Used when failures should stop execution.
+
+```typescript
+// Example: Voyage AI client creation
+if (!apiKey) {
+  throw new Error("VOYAGE_API_KEY not configured");
+}
+```
+
+### TypeScript Type Annotations
+
+**Always add explicit types for:**
+1. Handler return types: `handler: async (ctx, args): Promise<ReturnType> =>`
+2. Arrays from queries: `const items: Doc<"items">[] = await ctx.runQuery(...)`
+3. Filter/map callbacks: `.filter((item: Doc<"items">) => ...)`
+4. Function parameters in closures (TypeScript narrowing doesn't work in callbacks)
+
+```typescript
+// ✅ CORRECT - Explicit types
+const items: Doc<"items">[] = await ctx.runQuery(internal.items.fetchItemsByIds, { itemIds });
+const filtered = items.filter((item: Doc<"items">) => item.status === "active");
+
+// ❌ WRONG - Implicit any
+const items = await ctx.runQuery(internal.items.fetchItemsByIds, { itemIds });
+const filtered = items.filter((item) => item.status === "active"); // item is any!
+```
+
+### Vector Search Pattern
+
+**Vector search is only available in actions**, not queries. Use `internalAction` for vector search functions.
+
+```typescript
+// ✅ CORRECT - internalAction for vector search
+export const vectorSearchInternal = internalAction({
+  args: { embedding: v.array(v.float64()), ... },
+  handler: async (ctx, args) => {
+    const results = await ctx.vectorSearch("items", "by_embedding", {
+      vector: args.embedding,
+      limit: 20,
+    });
+    // ...
+  },
+});
+
+// ❌ WRONG - internalQuery cannot do vector search
+export const vectorSearchInternal = internalQuery({ ... });
+```
 
 ## Architecture: Hybrid Memory Model
 
