@@ -260,3 +260,23 @@ export const listAllItems = internalQuery({
     return await ctx.db.query("items").collect();
   },
 });
+
+/**
+ * Internal query to fetch multiple items by IDs.
+ * Used by vector search to load complete item documents.
+ *
+ * @param itemIds - Array of item IDs to fetch
+ * @returns Array of items
+ */
+export const fetchItemsByIds = internalQuery({
+  args: {
+    itemIds: v.array(v.id("items")),
+  },
+  handler: async (ctx, args) => {
+    const items = await Promise.all(
+      args.itemIds.map((id) => ctx.db.get(id))
+    );
+    // Filter out any null results (deleted items)
+    return items.filter((item): item is NonNullable<typeof item> => item !== null);
+  },
+});

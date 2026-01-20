@@ -6,7 +6,7 @@
 export const TOOL_DEFINITIONS = [
   {
     name: "memory_search",
-    description: "Search memory for relevant information using vector similarity and graph traversal. Returns formatted context with time-decay scoring (30-day half-life).",
+    description: "Search memory for relevant information using hybrid vector + graph search. Returns formatted context with time-decay scoring (30-day half-life).",
     inputSchema: {
       type: "object",
       properties: {
@@ -16,8 +16,8 @@ export const TOOL_DEFINITIONS = [
         },
         maxTokens: {
           type: "number",
-          description: "Maximum tokens in response (optional, default: 1000)",
-          default: 1000
+          description: "Maximum tokens in response (optional, default: 2000)",
+          default: 2000
         }
       },
       required: ["query"]
@@ -50,6 +50,11 @@ export const TOOL_DEFINITIONS = [
         task: {
           type: "string",
           description: "Description of the task or question"
+        },
+        maxTokens: {
+          type: "number",
+          description: "Maximum tokens in response (optional, default: 2000)",
+          default: 2000
         }
       },
       required: ["task"]

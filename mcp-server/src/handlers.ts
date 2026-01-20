@@ -30,46 +30,28 @@ export class ToolHandlers {
   }
 
   /**
-   * Search memory using vector similarity search.
-   * Calls Convex items:vectorSearch action with the query.
+   * Search memory using hybrid vector + graph search.
+   * Calls Convex retrieval:hybridSearch action which combines:
+   * - Vector search on items (file-based memory layer)
+   * - Graph search on nodes (relationship-based layer)
+   * - Time-decay scoring (30-day half-life)
+   * - Relevance filtering (score > 0.7)
    */
   async handleMemorySearch(args: { query: string; maxTokens?: number }): Promise<CallToolResult> {
     try {
-      const { query, maxTokens = 1000 } = args;
+      const { query, maxTokens = 2000 } = args;
 
-      // Call Convex vectorSearch action
-      const results = await this.convex.action(api.items.vectorSearch, {
+      // Call Convex hybridSearch action
+      const result = await this.convex.action(api.retrieval.hybridSearch, {
         query,
-        limit: 10,
+        maxTokens,
       });
 
-      if (!results || results.length === 0) {
-        return {
-          content: [{
-            type: "text",
-            text: "No relevant memories found for your query."
-          }]
-        };
-      }
-
-      // Format results with relevance information
-      const formattedResults = results.map((item: Item, index: number) => {
-        const accessInfo = item.accessCount > 0
-          ? ` (accessed ${item.accessCount} times)`
-          : " (new memory)";
-        return `${index + 1}. [${item.category}]${accessInfo}\n   ${item.content}`;
-      }).join("\n\n");
-
-      // Truncate if exceeds maxTokens (rough estimate: 4 chars per token)
-      const maxChars = maxTokens * 4;
-      const truncatedResults = formattedResults.length > maxChars
-        ? formattedResults.substring(0, maxChars) + "\n\n... (results truncated)"
-        : formattedResults;
-
+      // Return formatted context (already markdown-formatted by assembleContextWindow)
       return {
         content: [{
           type: "text",
-          text: `Found ${results.length} relevant memories:\n\n${truncatedResults}`
+          text: result.context || "No relevant memories found."
         }]
       };
     } catch (error: any) {
@@ -128,46 +110,24 @@ export class ToolHandlers {
 
   /**
    * Get relevant context for a specific task.
-   * Uses vector search to find relevant items, then formats as context.
+   * Uses hybrid search (vector + graph) to find relevant information.
+   * This is semantically similar to memory_search but uses 'task' parameter name.
    */
-  async handleMemoryGetContext(args: { task: string }): Promise<CallToolResult> {
+  async handleMemoryGetContext(args: { task: string; maxTokens?: number }): Promise<CallToolResult> {
     try {
-      const { task } = args;
+      const { task, maxTokens = 2000 } = args;
 
-      // Search for relevant items using vector similarity
-      const results = await this.convex.action(api.items.vectorSearch, {
-        query: task,
-        limit: 15, // Get more items for context
+      // Call Convex hybridSearch action (using 'task' as query)
+      const result = await this.convex.action(api.retrieval.hybridSearch, {
+        query: task, // Use 'task' parameter as search query
+        maxTokens,
       });
 
-      if (!results || results.length === 0) {
-        return {
-          content: [{
-            type: "text",
-            text: `No relevant context found for task: "${task}"\n\nThis may be a new topic area. Consider adding relevant facts using memory_add_fact.`
-          }]
-        };
-      }
-
-      // Group items by category for organized context
-      const byCategory: Record<string, Item[]> = {};
-      for (const item of results as Item[]) {
-        if (!byCategory[item.category]) {
-          byCategory[item.category] = [];
-        }
-        byCategory[item.category].push(item);
-      }
-
-      // Format context by category
-      const contextSections = Object.entries(byCategory).map(([category, items]) => {
-        const facts = items.map(item => `  - ${item.content}`).join("\n");
-        return `## ${category}\n${facts}`;
-      }).join("\n\n");
-
+      // Return formatted context (already markdown-formatted by assembleContextWindow)
       return {
         content: [{
           type: "text",
-          text: `# Context for: "${task}"\n\n${contextSections}\n\n---\n_Found ${results.length} relevant facts across ${Object.keys(byCategory).length} categories._`
+          text: result.context || "No relevant context found."
         }]
       };
     } catch (error: any) {
