@@ -1,7 +1,8 @@
 {
   "node": {
     "externalPackages": [
-      "@google/generative-ai"
+      "@google/generative-ai",
+      "voyageai"
     ]
   }
 }

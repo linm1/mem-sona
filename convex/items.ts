@@ -295,3 +295,42 @@ export const fetchItemsByIds = internalQuery({
     return items.filter((item): item is NonNullable<typeof item> => item !== null);
   },
 });
+
+/**
+ * Internal mutation to update item embedding.
+ * Used by maintenance jobs for reindexing embeddings.
+ *
+ * @param itemId - Item ID to update
+ * @param embedding - New embedding vector (1024 dimensions)
+ * @returns void
+ */
+export const updateItemEmbeddingInternal = internalMutation({
+  args: {
+    itemId: v.id("items"),
+    embedding: v.array(v.float64()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.patch(args.itemId, {
+      embedding: args.embedding,
+    });
+  },
+});
+
+/**
+ * Internal mutation to delete an item.
+ * Used by maintenance jobs to clean up old items after summarization.
+ *
+ * Note: Items table doesn't have a status field, so this is a hard delete.
+ * Original source data remains in resources table (immutable audit trail).
+ *
+ * @param itemId - Item ID to delete
+ * @returns void
+ */
+export const deleteItemInternal = internalMutation({
+  args: {
+    itemId: v.id("items"),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.delete(args.itemId);
+  },
+});

@@ -792,6 +792,27 @@ export const archiveEdgeInternal = internalMutation({
   },
 });
 
+/**
+ * Internal mutation to update node embedding.
+ * Used by maintenance jobs for reindexing embeddings.
+ *
+ * @param nodeId - Node ID to update
+ * @param embedding - New embedding vector (1024 dimensions)
+ * @returns void
+ */
+export const updateNodeEmbeddingInternal = internalMutation({
+  args: {
+    nodeId: v.id("graphNodes"),
+    embedding: v.array(v.float64()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.patch(args.nodeId, {
+      embedding: args.embedding,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // ============ EDGE CRUD OPERATIONS ============
 
 /**
