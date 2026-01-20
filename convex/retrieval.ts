@@ -1,8 +1,17 @@
 // convex/retrieval.ts
+// Hybrid Search - Combines vector and graph search for comprehensive memory retrieval
+
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalAction, action } from "./_generated/server";
 import { internal } from "./_generated/api";
+
+/**
+ * Relevance threshold for filtering search results.
+ * Results with finalScore below this threshold are excluded.
+ * Value chosen based on empirical testing to balance precision and recall.
+ */
+const RELEVANCE_THRESHOLD = 0.7;
 
 /**
  * Results from vector search on items table.
@@ -22,6 +31,18 @@ export type VectorResult = {
   /** Category classification (e.g., "tech_preferences", "projects") */
   category: string;
 };
+
+/**
+ * Convex validator for VectorResult type.
+ * Used for type-safe argument validation in internal actions.
+ */
+const vectorResultValidator = v.object({
+  itemId: v.id("items"),
+  content: v.string(),
+  score: v.number(),
+  timestamp: v.number(),
+  category: v.string(),
+});
 
 /**
  * Results from graph search on nodes table.
@@ -45,6 +66,19 @@ export type GraphResult = {
 };
 
 /**
+ * Convex validator for GraphResult type.
+ * Used for type-safe argument validation in internal actions.
+ */
+const graphResultValidator = v.object({
+  nodeId: v.id("graphNodes"),
+  nodeType: v.string(),
+  context: v.string(),
+  score: v.number(),
+  timestamp: v.number(),
+  edges: v.number(),
+});
+
+/**
  * Merged results from both vector and graph search.
  * Represents the unified output after combining and deduplicating results from both layers.
  *
@@ -64,6 +98,19 @@ export type MergedResult = {
   /** Which search contributed this result: vector-only, graph-only, or both */
   source: "vector" | "graph" | "hybrid";
 };
+
+/**
+ * Convex validator for MergedResult type.
+ * Used for type-safe argument validation in internal actions.
+ */
+const mergedResultValidator = v.object({
+  type: v.union(v.literal("item"), v.literal("node")),
+  content: v.string(),
+  score: v.number(),
+  finalScore: v.number(),
+  timestamp: v.number(),
+  source: v.union(v.literal("vector"), v.literal("graph"), v.literal("hybrid")),
+});
 
 /**
  * Final hybrid search result returned to MCP server.
@@ -170,12 +217,12 @@ export const vectorSearchPipeline = internalAction({
 
     // Load full item documents
     const itemIds = searchResults.map((result) => result._id);
-    const items = await ctx.runQuery(internal.items.fetchItemsByIds, {
+    const items: Doc<"items">[] = await ctx.runQuery(internal.items.fetchItemsByIds, {
       itemIds,
     });
 
     // Apply time-decay scoring and build results
-    const results: Array<VectorResult> = items.map((item) => {
+    const results: Array<VectorResult> = items.map((item: Doc<"items">) => {
       // Find the corresponding search result to get the score
       const searchResult = searchResults.find((r) => r._id === item._id);
       const score = searchResult?._score ?? 0;
@@ -265,12 +312,12 @@ export const graphSearchPipeline = internalAction({
       }
 
       // Get all edges from this node (1-hop expansion)
-      const edges = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
+      const edges: Doc<"graphEdges">[] = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
         fromNodeId: node._id,
       });
 
       // Filter for active edges only
-      const activeEdges = edges.filter((edge) => edge.status === "active");
+      const activeEdges = edges.filter((edge: Doc<"graphEdges">) => edge.status === "active");
 
       // Build relationships context string
       const relationships: Array<string> = [];
@@ -348,8 +395,8 @@ export const graphSearchPipeline = internalAction({
  */
 export const mergeAndRankResults = internalAction({
   args: {
-    vectorResults: v.array(v.any()), // Array<VectorResult>
-    graphResults: v.array(v.any()), // Array<GraphResult>
+    vectorResults: v.array(vectorResultValidator),
+    graphResults: v.array(graphResultValidator),
     query: v.string(),
   },
   handler: async (ctx, args): Promise<Array<MergedResult>> => {
@@ -429,7 +476,7 @@ export const mergeAndRankResults = internalAction({
  */
 export const assembleContextWindow = internalAction({
   args: {
-    results: v.array(v.any()), // Array<MergedResult>
+    results: v.array(mergedResultValidator),
     maxTokens: v.number(),
     query: v.string(),
   },
@@ -532,14 +579,14 @@ export const hybridSearch = action({
     ]);
 
     // Merge results (deduplication + score averaging)
-    const merged = await ctx.runAction(internal.retrieval.mergeAndRankResults, {
+    const merged: MergedResult[] = await ctx.runAction(internal.retrieval.mergeAndRankResults, {
       vectorResults,
       graphResults,
       query: args.query,
     });
 
-    // Relevance filtering (finalScore > 0.7)
-    const filtered = merged.filter((r) => r.finalScore > 0.7);
+    // Relevance filtering using configured threshold
+    const filtered = merged.filter((r: MergedResult) => r.finalScore > RELEVANCE_THRESHOLD);
 
     // Assemble context (markdown formatting with token budget)
     const maxTokens = args.maxTokens ?? 2000;

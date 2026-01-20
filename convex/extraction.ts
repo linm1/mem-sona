@@ -5,6 +5,7 @@ import { action, internalMutation, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal, api } from "./_generated/api";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { callGeminiWithRetry, parseGeminiJson } from "./utils/gemini";
 
 // Types for extracted data
 interface ExtractedFact {
@@ -28,93 +29,30 @@ interface ExtractedRelationship {
   context?: string;
 }
 
+/**
+ * Result of LLM-based extraction.
+ *
+ * NOTE: This uses a result object pattern (success + error) instead of throwing
+ * because LLM extraction failures are expected and should be handled gracefully.
+ * The caller (processResource) can continue processing other resources even if
+ * one extraction fails.
+ */
 interface ExtractionResult {
   facts: ExtractedFact[];
   entities: ExtractedEntity[];
   relationships: ExtractedRelationship[];
+  /** Whether extraction completed successfully */
   success: boolean;
+  /** Error message if success is false */
   error?: string;
-}
-
-/**
- * Maximum retry attempts for Gemini API calls
- */
-const MAX_RETRIES = 3;
-
-/**
- * Base delay in ms between retries (exponential backoff)
- */
-const RETRY_DELAY_BASE = 1000;
-
-/**
- * Helper function to call Gemini with retry logic.
- * Implements exponential backoff for transient failures.
- */
-async function callGeminiWithRetry(
-  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
-  prompt: string,
-  retries: number = MAX_RETRIES
-): Promise<string> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      return response.text();
-    } catch (error) {
-      lastError = error as Error;
-      console.error(`Gemini API attempt ${attempt + 1} failed:`, error);
-
-      // Don't retry on non-transient errors
-      if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        if (
-          message.includes("api key") ||
-          message.includes("invalid") ||
-          message.includes("authentication")
-        ) {
-          throw error; // Don't retry auth errors
-        }
-      }
-
-      // Exponential backoff before retry
-      if (attempt < retries - 1) {
-        const delay = RETRY_DELAY_BASE * Math.pow(2, attempt);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError || new Error("Gemini API call failed after all retries");
-}
-
-/**
- * Parse JSON from Gemini response, handling markdown code blocks.
- */
-function parseGeminiJson<T>(responseText: string): T {
-  // Remove markdown code blocks if present
-  let cleanText = responseText.trim();
-
-  // Handle ```json ... ``` format
-  if (cleanText.startsWith("```json")) {
-    cleanText = cleanText.slice(7);
-  } else if (cleanText.startsWith("```")) {
-    cleanText = cleanText.slice(3);
-  }
-
-  if (cleanText.endsWith("```")) {
-    cleanText = cleanText.slice(0, -3);
-  }
-
-  cleanText = cleanText.trim();
-
-  return JSON.parse(cleanText) as T;
 }
 
 /**
  * Extract atomic facts, entities, and relationships from raw resource content.
  * This action calls Gemini to analyze text and extract structured data in a single call.
+ *
+ * Uses result object pattern for graceful degradation - returns {success: false, error}
+ * instead of throwing, allowing callers to handle failures without crashing pipelines.
  *
  * @param content - Raw text content to extract from
  * @returns Extracted facts, entities, and relationships with success status
@@ -379,9 +317,9 @@ export const processResource = internalAction({
     });
 
     // Trigger category summarization for affected categories
-    const affectedCategories: string[] = [
-      ...new Set(extractionResult.facts.map((f: ExtractedFact) => f.category)),
-    ];
+    const affectedCategories: string[] = Array.from(
+      new Set(extractionResult.facts.map((f: ExtractedFact) => f.category))
+    );
     for (const category of affectedCategories) {
       try {
         await ctx.runAction(internal.categories.evolveSummary, {

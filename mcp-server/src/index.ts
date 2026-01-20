@@ -12,6 +12,15 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { ToolHandlers } from "./handlers.js";
 import { TOOL_DEFINITIONS } from "./tools.js";
+import type {
+  MemorySearchArgs,
+  MemoryAddFactArgs,
+  MemoryGetContextArgs,
+  MemoryLogSessionArgs,
+  MemoryAddEntityArgs,
+  MemoryAddRelationshipArgs,
+  MemoryGetProjectArgs,
+} from "./types.js";
 
 const CONVEX_URL = process.env.CONVEX_URL || "";
 
@@ -51,28 +60,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "memory_search":
-        return await handlers.handleMemorySearch(args as any);
-      
+        return await handlers.handleMemorySearch(args as unknown as MemorySearchArgs);
+
       case "memory_add_fact":
-        return await handlers.handleMemoryAddFact(args as any);
-      
+        return await handlers.handleMemoryAddFact(args as unknown as MemoryAddFactArgs);
+
       case "memory_get_context":
-        return await handlers.handleMemoryGetContext(args as any);
-      
+        return await handlers.handleMemoryGetContext(args as unknown as MemoryGetContextArgs);
+
       case "memory_log_session":
-        return await handlers.handleMemoryLogSession(args as any);
-      
+        return await handlers.handleMemoryLogSession(args as unknown as MemoryLogSessionArgs);
+
       case "memory_get_profile":
         return await handlers.handleMemoryGetProfile();
-      
+
       case "memory_add_entity":
-        return await handlers.handleMemoryAddEntity(args as any);
-      
+        return await handlers.handleMemoryAddEntity(args as unknown as MemoryAddEntityArgs);
+
       case "memory_add_relationship":
-        return await handlers.handleMemoryAddRelationship(args as any);
+        return await handlers.handleMemoryAddRelationship(args as unknown as MemoryAddRelationshipArgs);
 
       case "memory_get_project":
-        return await handlers.handleMemoryGetProject(args as any);
+        return await handlers.handleMemoryGetProject(args as unknown as MemoryGetProjectArgs);
 
       default:
         return {

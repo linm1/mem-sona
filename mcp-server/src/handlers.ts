@@ -6,6 +6,16 @@
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  MemorySearchArgs,
+  MemoryAddFactArgs,
+  MemoryGetContextArgs,
+  MemoryLogSessionArgs,
+  MemoryAddEntityArgs,
+  MemoryAddRelationshipArgs,
+  MemoryGetProjectArgs,
+} from "./types.js";
+import { VALID_ENTITY_TYPES, isValidEntityType } from "./types.js";
 
 // Use anyApi for dynamic function references
 // This allows the MCP server to work without pre-generated types
@@ -37,7 +47,7 @@ export class ToolHandlers {
    * - Time-decay scoring (30-day half-life)
    * - Relevance filtering (score > 0.7)
    */
-  async handleMemorySearch(args: { query: string; maxTokens?: number }): Promise<CallToolResult> {
+  async handleMemorySearch(args: MemorySearchArgs): Promise<CallToolResult> {
     try {
       const { query, maxTokens = 2000 } = args;
 
@@ -70,7 +80,7 @@ export class ToolHandlers {
    * Add an atomic fact to memory.
    * Creates a temporary resource first, then calls items:addItem action.
    */
-  async handleMemoryAddFact(args: { content: string; category: string }): Promise<CallToolResult> {
+  async handleMemoryAddFact(args: MemoryAddFactArgs): Promise<CallToolResult> {
     try {
       const { content, category } = args;
 
@@ -113,7 +123,7 @@ export class ToolHandlers {
    * Uses hybrid search (vector + graph) to find relevant information.
    * This is semantically similar to memory_search but uses 'task' parameter name.
    */
-  async handleMemoryGetContext(args: { task: string; maxTokens?: number }): Promise<CallToolResult> {
+  async handleMemoryGetContext(args: MemoryGetContextArgs): Promise<CallToolResult> {
     try {
       const { task, maxTokens = 2000 } = args;
 
@@ -146,7 +156,7 @@ export class ToolHandlers {
    * Log a conversation or session for future processing.
    * Calls Convex resources:addResource mutation to store the raw log.
    */
-  async handleMemoryLogSession(args: { content: string; metadata?: { agent?: string; context?: string } }): Promise<CallToolResult> {
+  async handleMemoryLogSession(args: MemoryLogSessionArgs): Promise<CallToolResult> {
     try {
       const { content, metadata } = args;
 
@@ -244,33 +254,29 @@ export class ToolHandlers {
    * Add a named entity to the knowledge graph.
    * Creates a node with embedding generation via Convex graph.createNode action.
    */
-  async handleMemoryAddEntity(args: { name: string; type: string; description?: string }): Promise<CallToolResult> {
+  async handleMemoryAddEntity(args: MemoryAddEntityArgs): Promise<CallToolResult> {
     try {
       const { name, type, description } = args;
 
-      // Validate type
-      const validTypes = ["project", "tool", "skill", "concept"];
-      if (!validTypes.includes(type)) {
+      // Validate type using shared utility
+      if (!isValidEntityType(type)) {
         return {
           content: [{
             type: "text",
-            text: `Invalid entity type: ${type}. Must be one of: ${validTypes.join(", ")}`
+            text: `Invalid entity type: ${type}. Must be one of: ${VALID_ENTITY_TYPES.join(", ")}`
           }],
           isError: true
         };
       }
 
-      // Build properties object
-      const properties: Record<string, any> = {};
-      if (description) {
-        properties.description = description;
-      }
+      // Build properties object (simplified - no redundant construction)
+      const properties = description ? { description } : {};
 
       // Call Convex graph.createNode action
       const nodeId = await this.convex.action(api.graph.createNode, {
         name,
         type,
-        properties: properties.description ? { description: properties.description } : {},
+        properties,
       });
 
       return {
@@ -298,33 +304,25 @@ export class ToolHandlers {
    * - Exclusive relationship handling (archiving old edges)
    * - Edge strengthening for repeated relationships
    */
-  async handleMemoryAddRelationship(args: {
-    fromEntity: string;
-    fromType: string;
-    relationship: string;
-    toEntity: string;
-    toType: string;
-    context?: string;
-  }): Promise<CallToolResult> {
+  async handleMemoryAddRelationship(args: MemoryAddRelationshipArgs): Promise<CallToolResult> {
     try {
       const { fromEntity, fromType, relationship, toEntity, toType, context } = args;
 
-      // Validate types
-      const validTypes = ["project", "tool", "skill", "concept"];
-      if (!validTypes.includes(fromType)) {
+      // Validate types using shared utility
+      if (!isValidEntityType(fromType)) {
         return {
           content: [{
             type: "text",
-            text: `Invalid fromType: ${fromType}. Must be one of: ${validTypes.join(", ")}`
+            text: `Invalid fromType: ${fromType}. Must be one of: ${VALID_ENTITY_TYPES.join(", ")}`
           }],
           isError: true
         };
       }
-      if (!validTypes.includes(toType)) {
+      if (!isValidEntityType(toType)) {
         return {
           content: [{
             type: "text",
-            text: `Invalid toType: ${toType}. Must be one of: ${validTypes.join(", ")}`
+            text: `Invalid toType: ${toType}. Must be one of: ${VALID_ENTITY_TYPES.join(", ")}`
           }],
           isError: true
         };
@@ -377,7 +375,7 @@ export class ToolHandlers {
    * Get a project with its tools and required skills (2-hop query).
    * Performs graph traversal: project -> uses_tool -> tools -> requires_skill -> skills
    */
-  async handleMemoryGetProject(args: { projectName: string }): Promise<CallToolResult> {
+  async handleMemoryGetProject(args: MemoryGetProjectArgs): Promise<CallToolResult> {
     try {
       const { projectName } = args;
 

@@ -4,7 +4,11 @@
 import { mutation, query, action, internalMutation, internalQuery, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { VoyageAIClient } from "voyageai";
+import type { Doc } from "./_generated/dataModel";
+import { generateEmbedding as voyageGenerateEmbedding, VoyageInputType } from "./utils/voyage";
+
+/** Item document with similarity score from vector search */
+type ItemWithScore = Doc<"items"> & { _score: number };
 
 /**
  * Generate embedding for text using Voyage AI SDK (voyage-4).
@@ -26,32 +30,8 @@ export const generateEmbedding = internalAction({
     inputType: v.union(v.literal("document"), v.literal("query")),
   },
   handler: async (ctx, args): Promise<number[]> => {
-    const apiKey = process.env.VOYAGE_API_KEY;
-    if (!apiKey) {
-      throw new Error("VOYAGE_API_KEY not configured");
-    }
-
     try {
-      const client = new VoyageAIClient({
-        apiKey: apiKey,
-      });
-
-      // Call the standard embed API (not contextualizedEmbed)
-      // voyage-4 uses standard embeddings, not contextualized
-      const result = await client.embed({
-        input: args.text, // Single string input
-        model: "voyage-4", // Latest generation standard embeddings
-        inputType: args.inputType, // "document" or "query" optimization hint
-        outputDimension: 1024, // voyage-4 default dimension (also supports 256, 512, 2048)
-      });
-
-      // Response structure for standard embeddings: result.data[0].embedding
-      // The embedding field is optional in the type definition, so we need to handle undefined
-      if (!result.data || result.data.length === 0 || !result.data[0].embedding) {
-        throw new Error("Empty embedding response from Voyage API");
-      }
-
-      return result.data[0].embedding;
+      return await voyageGenerateEmbedding(args.text, args.inputType as VoyageInputType);
     } catch (error) {
       console.error("Embedding generation failed:", error);
       throw error;
@@ -128,19 +108,25 @@ export const getItem = query({
 /**
  * Update item access tracking.
  * Called when an item is retrieved during memory search.
+ *
+ * @returns true if item was updated, false if item not found
  */
 export const updateItemAccess = mutation({
   args: {
     itemId: v.id("items"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<boolean> => {
     const item = await ctx.db.get(args.itemId);
-    if (!item) return;
+    if (!item) {
+      console.warn(`Attempted to update access for non-existent item: ${args.itemId}`);
+      return false;
+    }
 
     await ctx.db.patch(args.itemId, {
       accessedAt: Date.now(),
       accessCount: item.accessCount + 1,
     });
+    return true;
   },
 });
 
@@ -148,43 +134,71 @@ export const updateItemAccess = mutation({
  * Vector search on items using embeddings.
  * Returns items ranked by semantic similarity to the query embedding.
  *
- * @param embedding - Query embedding (1536 dimensions from voyage-context-3)
+ * Uses Convex vector search (only available in actions) to find semantically
+ * similar items based on embedding similarity.
+ *
+ * @param embedding - Query embedding (1024 dimensions from voyage-4)
  * @param category - Optional category filter
  * @param limit - Maximum number of results
+ * @returns Array of items with _score field indicating similarity
  */
-export const vectorSearchInternal = internalQuery({
+export const vectorSearchInternal = internalAction({
   args: {
     embedding: v.array(v.float64()),
     category: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<ItemWithScore[]> => {
     const limit = args.limit ?? 10;
 
-    // TODO: Implement proper vector search using Convex vector indexes
-    // For now, return items filtered by category (if specified)
-    if (args.category !== undefined) {
-      // Search with category filter
+    // Build search query with optional category filter
+    const searchQuery: {
+      vector: number[];
+      limit: number;
+      filter?: (q: any) => any;
+    } = {
+      vector: args.embedding,
+      limit: limit * 2, // Get extra results for potential filtering
+    };
+
+    // Add category filter if specified
+    if (args.category) {
       const category = args.category;
-      const results = await ctx.db
-        .query("items")
-        .withIndex("by_category", (q) => q.eq("category", category))
-        .take(limit);
-
-      return results;
-    } else {
-      // Search across all categories
-      const results = await ctx.db
-        .query("items")
-        .take(limit);
-
-      return results;
+      searchQuery.filter = (q) => q.eq("category", category);
     }
+
+    // Execute vector search on items table
+    const searchResults = await ctx.vectorSearch("items", "by_embedding", searchQuery);
+
+    // Load full item documents
+    const itemIds = searchResults.map((result) => result._id);
+    const items: Doc<"items">[] = await ctx.runQuery(internal.items.fetchItemsByIds, {
+      itemIds,
+    });
+
+    // Attach scores and return top N results
+    const resultsWithScores: ItemWithScore[] = items.map((item: Doc<"items">) => {
+      const searchResult = searchResults.find((r) => r._id === item._id);
+      return {
+        ...item,
+        _score: searchResult?._score ?? 0,
+      };
+    });
+
+    // Sort by score (highest first) and limit
+    resultsWithScores.sort((a: ItemWithScore, b: ItemWithScore) => b._score - a._score);
+    return resultsWithScores.slice(0, limit);
   },
 });
 
 /**
  * Public vector search action that generates embedding and searches.
+ * Returns items ranked by semantic similarity to the query.
+ *
+ * @param query - Search query text
+ * @param category - Optional category filter
+ * @param limit - Maximum number of results (default: 10)
+ * @returns Array of items with similarity scores
  */
 export const vectorSearch = action({
   args: {
@@ -200,6 +214,7 @@ export const vectorSearch = action({
     accessedAt: number;
     accessCount: number;
     resourceId: string;
+    _score: number;
   }>> => {
     // Generate query embedding with "query" input type for search
     const embedding = await ctx.runAction(internal.items.generateEmbedding, {
@@ -207,8 +222,8 @@ export const vectorSearch = action({
       inputType: "query",
     });
 
-    // Search with embedding
-    const results = await ctx.runQuery(internal.items.vectorSearchInternal, {
+    // Search with embedding (using action since vector search requires it)
+    const results = await ctx.runAction(internal.items.vectorSearchInternal, {
       embedding,
       category: args.category,
       limit: args.limit,

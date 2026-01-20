@@ -5,59 +5,7 @@ import { mutation, query, action, internalMutation, internalQuery, internalActio
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
-/**
- * Maximum retry attempts for Gemini API calls
- */
-const MAX_RETRIES = 3;
-
-/**
- * Base delay in ms between retries (exponential backoff)
- */
-const RETRY_DELAY_BASE = 1000;
-
-/**
- * Helper function to call Gemini with retry logic.
- * Implements exponential backoff for transient failures.
- */
-async function callGeminiWithRetry(
-  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
-  prompt: string,
-  retries: number = MAX_RETRIES
-): Promise<string> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      const result = await model.generateContent(prompt);
-      const response = result.response;
-      return response.text();
-    } catch (error) {
-      lastError = error as Error;
-      console.error(`Gemini API attempt ${attempt + 1} failed:`, error);
-
-      // Don't retry on non-transient errors
-      if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        if (
-          message.includes("api key") ||
-          message.includes("invalid") ||
-          message.includes("authentication")
-        ) {
-          throw error; // Don't retry auth errors
-        }
-      }
-
-      // Exponential backoff before retry
-      if (attempt < retries - 1) {
-        const delay = RETRY_DELAY_BASE * Math.pow(2, attempt);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError || new Error("Gemini API call failed after all retries");
-}
+import { callGeminiWithRetry } from "./utils/gemini";
 
 // ============ QUERIES ============
 

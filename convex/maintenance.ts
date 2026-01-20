@@ -39,15 +39,15 @@ export const graphCleanup = internalAction({
 
     for (const node of activeNodes) {
       // Count active edges (both outgoing and incoming)
-      const outgoingEdges = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
+      const outgoingEdges: Doc<"graphEdges">[] = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
         fromNodeId: node._id,
       });
-      const incomingEdges = await ctx.runQuery(internal.graph.getEdgesTo, {
+      const incomingEdges: Doc<"graphEdges">[] = await ctx.runQuery(internal.graph.getEdgesTo, {
         toNodeId: node._id,
       });
 
-      const activeOutgoing = outgoingEdges.filter((edge) => edge.status === "active");
-      const activeIncoming = incomingEdges.filter((edge) => edge.status === "active");
+      const activeOutgoing = outgoingEdges.filter((edge: Doc<"graphEdges">) => edge.status === "active");
+      const activeIncoming = incomingEdges.filter((edge: Doc<"graphEdges">) => edge.status === "active");
       const totalActiveEdges = activeOutgoing.length + activeIncoming.length;
 
       // Check if node is orphaned and stale

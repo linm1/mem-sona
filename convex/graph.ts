@@ -1,15 +1,35 @@
 // convex/graph.ts
 // Graph Node Management - Create, read, update, archive nodes with embeddings
 
-import { mutation, query, action, internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query, action, internalAction, internalMutation, internalQuery, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { VoyageAIClient } from "voyageai";
 import type { Id, Doc } from "./_generated/dataModel";
+import { generateNodeEmbedding as voyageGenerateNodeEmbedding } from "./utils/voyage";
 
 // Allowed node types
 const VALID_NODE_TYPES = ["project", "tool", "skill", "concept"] as const;
 type NodeType = typeof VALID_NODE_TYPES[number];
+
+/**
+ * Represents an edge info element in a path (relationship between nodes).
+ */
+type PathEdgeInfo = {
+  edge: string; // relationship type
+};
+
+/**
+ * Path element can be either a node document or edge info.
+ * Paths alternate: [node, edge, node, edge, node, ...]
+ */
+type PathElement = Doc<"graphNodes"> | PathEdgeInfo;
+
+/**
+ * Type guard to check if a path element is edge info.
+ */
+function isEdgeInfo(element: PathElement): element is PathEdgeInfo {
+  return "edge" in element && typeof (element as PathEdgeInfo).edge === "string";
+}
 
 // ============ EMBEDDING GENERATION ============
 
@@ -35,34 +55,8 @@ export const generateNodeEmbedding = internalAction({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<number[]> => {
-    const apiKey = process.env.VOYAGE_API_KEY;
-    if (!apiKey) {
-      throw new Error("VOYAGE_API_KEY not configured");
-    }
-
     try {
-      const client = new VoyageAIClient({
-        apiKey: apiKey,
-      });
-
-      // Concatenate node information for embedding
-      const text = `${args.name} (${args.type}): ${args.description || ''}`;
-
-      // Call the standard embed API (not contextualizedEmbed)
-      // voyage-4 uses standard embeddings, not contextualized
-      const result = await client.embed({
-        input: text, // Single string input
-        model: "voyage-4", // Latest generation standard embeddings
-        inputType: "document", // "document" optimization hint for storage
-        outputDimension: 1024, // voyage-4 default dimension (also supports 256, 512, 2048)
-      });
-
-      // Response structure for standard embeddings: result.data[0].embedding
-      if (!result.data || result.data.length === 0 || !result.data[0].embedding) {
-        throw new Error("Empty embedding response from Voyage API");
-      }
-
-      return result.data[0].embedding;
+      return await voyageGenerateNodeEmbedding(args.name, args.type, args.description);
     } catch (error) {
       console.error("Node embedding generation failed:", error);
       throw error;
@@ -356,15 +350,15 @@ export const searchNodes = action({
 
     // Load the actual node documents and filter for active nodes
     const nodeIds = searchResults.map((result) => result._id);
-    const nodes = await ctx.runQuery(internal.graph.fetchNodesByIds, {
+    const nodes: Doc<"graphNodes">[] = await ctx.runQuery(internal.graph.fetchNodesByIds, {
       nodeIds,
     });
 
     // Filter for active nodes and attach scores
     const results = nodes
-      .filter((node) => node.status === "active")
+      .filter((node: Doc<"graphNodes">) => node.status === "active")
       .slice(0, limit)
-      .map((node) => {
+      .map((node: Doc<"graphNodes">) => {
         const searchResult = searchResults.find((r) => r._id === node._id);
         return {
           node,
@@ -551,19 +545,19 @@ export const upsertEdgeInternal = internalAction({
     // Step 5: Handle exclusive relationships
     if (isExclusiveRelationship(args.relationship)) {
       // Find all active edges from the same source with the same relationship
-      const existingEdges = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
+      const existingEdges: Doc<"graphEdges">[] = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
         fromNodeId: fromNode._id,
         relationship: args.relationship,
       });
 
       // Archive any active edges that point to a different target
       const edgesToSupersede = existingEdges.filter(
-        (edge) => edge.toNode !== toNode._id && edge.status === "active"
+        (edge: Doc<"graphEdges">) => edge.toNode !== toNode._id && edge.status === "active"
       );
 
       if (edgesToSupersede.length > 0) {
         await ctx.runMutation(internal.graph.supersedeEdgesInternal, {
-          edgeIds: edgesToSupersede.map((e) => e._id),
+          edgeIds: edgesToSupersede.map((e: Doc<"graphEdges">) => e._id),
         });
 
         // Create new edge
@@ -671,10 +665,12 @@ export const getEdgesFromInternal = internalQuery({
   },
   handler: async (ctx, args): Promise<Array<Doc<"graphEdges">>> => {
     if (args.relationship !== undefined) {
+      // Capture relationship for closure (TypeScript narrowing doesn't work in callbacks)
+      const relationship = args.relationship;
       return await ctx.db
         .query("graphEdges")
         .withIndex("by_from_relationship", (q) =>
-          q.eq("fromNode", args.fromNodeId).eq("relationship", args.relationship!)
+          q.eq("fromNode", args.fromNodeId).eq("relationship", relationship)
         )
         .collect();
     } else {
@@ -845,10 +841,12 @@ export const getEdgesFrom = query({
   },
   handler: async (ctx, args): Promise<Array<Doc<"graphEdges">>> => {
     if (args.relationship !== undefined) {
+      // Capture relationship for closure (TypeScript narrowing doesn't work in callbacks)
+      const relationship = args.relationship;
       return await ctx.db
         .query("graphEdges")
         .withIndex("by_from_relationship", (q) =>
-          q.eq("fromNode", args.fromNodeId).eq("relationship", args.relationship!)
+          q.eq("fromNode", args.fromNodeId).eq("relationship", relationship)
         )
         .collect();
     } else {
@@ -1076,6 +1074,8 @@ export const getToolPrerequisites = query({
  * Find connection path between two nodes using BFS (breadth-first search).
  * Returns the shortest path between start and end nodes, or null if no path exists.
  *
+ * Path format: [node, {edge: "relationship"}, node, {edge: "relationship"}, node, ...]
+ *
  * @param startName - Name of the starting node
  * @param endName - Name of the ending node
  * @param maxDepth - Maximum search depth (default: 3)
@@ -1087,7 +1087,7 @@ export const findConnection = query({
     endName: v.string(),
     maxDepth: v.optional(v.number())
   },
-  handler: async (ctx, args): Promise<Array<any> | null> => {
+  handler: async (ctx, args): Promise<Array<PathElement> | null> => {
     const maxDepth = args.maxDepth ?? 3;
 
     // Find all nodes with the start name (could be multiple types)
@@ -1136,11 +1136,11 @@ export const findConnection = query({
  * @returns Path array or null if no path found
  */
 async function bfsSearch(
-  ctx: any,
+  ctx: QueryCtx,
   startNode: Doc<"graphNodes">,
   endNode: Doc<"graphNodes">,
   maxDepth: number
-): Promise<Array<any> | null> {
+): Promise<Array<PathElement> | null> {
   // Check if start and end are the same
   if (startNode._id === endNode._id) {
     return [startNode];
@@ -1149,7 +1149,7 @@ async function bfsSearch(
   // BFS queue: each item is { node, path, depth }
   interface QueueItem {
     node: Doc<"graphNodes">;
-    path: Array<any>; // Alternating nodes and edge info
+    path: Array<PathElement>;
     depth: number;
   }
 
@@ -1173,8 +1173,8 @@ async function bfsSearch(
     // Get all active outgoing edges from current node
     const edges = await ctx.db
       .query("graphEdges")
-      .withIndex("by_from", (q: any) => q.eq("fromNode", current.node._id))
-      .filter((q: any) => q.eq(q.field("status"), "active"))
+      .withIndex("by_from", (q) => q.eq("fromNode", current.node._id))
+      .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
     // Explore each edge
@@ -1245,34 +1245,34 @@ export const getProjectWithToolsAndSkills = action({
 
     // Step 2: Get all tools used by the project (1st hop)
     // Use "uses_tool" relationship
-    const toolEdges = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
+    const toolEdges: Doc<"graphEdges">[] = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
       fromNodeId: project._id,
       relationship: "uses_tool",
     });
 
-    const activeToolEdges = toolEdges.filter((edge) => edge.status === "active");
+    const activeToolEdges = toolEdges.filter((edge: Doc<"graphEdges">) => edge.status === "active");
 
     // Load all tool nodes
-    const toolNodeIds = activeToolEdges.map((edge) => edge.toNode);
-    const tools = toolNodeIds.length > 0
+    const toolNodeIds = activeToolEdges.map((edge: Doc<"graphEdges">) => edge.toNode);
+    const tools: Doc<"graphNodes">[] = toolNodeIds.length > 0
       ? await ctx.runQuery(internal.graph.fetchNodesByIds, {
           nodeIds: toolNodeIds,
         })
       : [];
 
-    const activeTools = tools.filter((tool) => tool.status === "active");
+    const activeTools = tools.filter((tool: Doc<"graphNodes">) => tool.status === "active");
 
     // Step 3: Get all skills required by these tools (2nd hop)
     // Use "requires_skill" relationship
     const skillNodeIds: Id<"graphNodes">[] = [];
 
     for (const tool of activeTools) {
-      const skillEdges = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
+      const skillEdges: Doc<"graphEdges">[] = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
         fromNodeId: tool._id,
         relationship: "requires_skill",
       });
 
-      const activeSkillEdges = skillEdges.filter((edge) => edge.status === "active");
+      const activeSkillEdges = skillEdges.filter((edge: Doc<"graphEdges">) => edge.status === "active");
 
       // Collect skill node IDs (deduplicate)
       for (const edge of activeSkillEdges) {
@@ -1283,13 +1283,13 @@ export const getProjectWithToolsAndSkills = action({
     }
 
     // Load all skill nodes
-    const skills = skillNodeIds.length > 0
+    const skills: Doc<"graphNodes">[] = skillNodeIds.length > 0
       ? await ctx.runQuery(internal.graph.fetchNodesByIds, {
           nodeIds: skillNodeIds,
         })
       : [];
 
-    const activeSkills = skills.filter((skill) => skill.status === "active");
+    const activeSkills = skills.filter((skill: Doc<"graphNodes">) => skill.status === "active");
 
     return {
       project,
