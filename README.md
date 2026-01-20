@@ -123,7 +123,7 @@ Log entire coding sessions for background processing and learning.
 │  └────────────────────────────────┘    │
 │                                         │
 │  ┌────────────────────────────────┐    │
-│  │ Extraction  (Gemini 2.0 Flash) │    │
+│  │ Extraction  (Gemini 3.0 Flash) │    │
 │  │ Embeddings  (Voyage AI)        │    │
 │  │ Vector Search (Convex Index)   │    │
 │  └────────────────────────────────┘    │
@@ -138,8 +138,8 @@ Log entire coding sessions for background processing and learning.
 |-----------|------------|
 | Backend/DB | Convex (TypeScript-native, real-time) |
 | Vector Search | Convex Vector Index (1536 dimensions) |
-| Embeddings | voyage-context-3 ($0.02/1M tokens) |
-| LLM Processing | gemini-2.0-flash (extraction & summarization) |
+| Embeddings | voyage-4 ($0.02/1M tokens) |
+| LLM Processing | gemini-3.0-flash (extraction & summarization) |
 | Agent Interface | MCP Server (TypeScript) |
 
 ---
@@ -204,14 +204,14 @@ mem-sona/
 
 ## Development Status
 
-**Phase 1:** ✅ **Complete** (Sprint 001)
+**Phase 1:** ✅ **Complete**
 - Core file-based memory system
 - Vector search with embeddings
 - LLM-based fact extraction
 - Category summarization
 - MCP server with 5 tools
 
-**Phase 2:** 🔜 Planned
+**Phase 2:** 🔜 **Complete**
 - Knowledge graph (entities + relationships)
 - Graph traversal queries
 - Relationship-aware retrieval
@@ -275,30 +275,6 @@ AI: [Updates summary]
 
 ---
 
-## API Costs (Estimated)
-
-| Service | Usage | Cost |
-|---------|-------|------|
-| Voyage AI | Embeddings | $0.02 per 1M tokens (~$0.01/day typical) |
-| Gemini 2.0 Flash | Extraction | Free tier: 15 RPM, 1M TPM |
-| Convex | Database + Functions | Free tier: 1GB storage, 1M function calls/month |
-
-**Typical daily cost:** < $0.10 for moderate usage
-
----
-
-## Contributing
-
-This is a personal project (Sprint 001 complete), but issues and suggestions welcome!
-
-### Reporting Issues
-Please include:
-- MCP server logs
-- Convex function logs
-- Steps to reproduce
-
----
-
 ## License
 
 MIT License - See LICENSE file
@@ -323,6 +299,3 @@ Built with:
 
 ---
 
-**Built by kllkt using Claude Code** 🤖
-
-Sprint 001 completed: January 19, 2026
