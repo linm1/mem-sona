@@ -1,0 +1,27 @@
+{
+  "name": "mem-sona",
+  "version": "1.0.0",
+  "description": "Personal memory infrastructure for AI coding agents",
+  "main": "index.js",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "keywords": [
+    "memory",
+    "ai",
+    "mcp",
+    "convex"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "convex": "^1.17.4",
+    "voyageai": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  }
+}
