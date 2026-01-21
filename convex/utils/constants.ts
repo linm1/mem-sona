@@ -51,8 +51,11 @@ export const EDGE_WEIGHT_CONFIG = {
  * - TIME_DECAY_HALFLIFE_DAYS: Half-life for time-decay scoring (recent memories rank higher)
  */
 export const SEARCH_CONFIG = {
-  /** Minimum score for search results to be returned (0-1) */
-  RELEVANCE_THRESHOLD: 0.7,
+  /** Minimum score for search results to be returned (0-1)
+   * NOTE: Convex vector search scores typically range 0.2-0.7, not 0-1.
+   * A threshold of 0.3 filters out weak matches while keeping relevant results.
+   */
+  RELEVANCE_THRESHOLD: 0.3,
 
   /** Minimum cosine similarity for duplicate detection (0-1) */
   SIMILARITY_THRESHOLD: 0.95,
@@ -96,3 +99,34 @@ export function daysToMs(days: number): number {
 export function msToDays(ms: number): number {
   return ms / (24 * 60 * 60 * 1000);
 }
+
+/**
+ * Reciprocal Rank Fusion (RRF) configuration for hybrid search.
+ *
+ * RRF combines ranked lists from multiple retrievers (vector + graph) without
+ * requiring score normalization. It focuses on ranking consistency rather than
+ * absolute scores, making it robust to different score distributions.
+ *
+ * Formula: RRF_score = Σ(weight_i × 1/(rank_i + k))
+ * Where:
+ * - weight_i = importance of retriever i
+ * - rank_i = position in ranked list (1-indexed)
+ * - k = constant (60 is experimentally optimal)
+ *
+ * Time-decay is applied AFTER fusion for clean separation of concerns:
+ * - final_score = RRF_score × decay_factor
+ * - decay_factor = 1 / (1 + age_days / half_life_days)
+ */
+export const RRF_CONFIG = {
+  /** RRF constant (k) - experimentally optimal value across domains */
+  CONSTANT: 60,
+
+  /** Weight for vector search results (semantic similarity - primary signal) */
+  VECTOR_WEIGHT: 0.6,
+
+  /** Weight for graph search results (relationship context - secondary signal) */
+  GRAPH_WEIGHT: 0.4,
+
+  /** Default Top-K results to return (replaces hard threshold filtering) */
+  DEFAULT_TOP_K: 20,
+} as const;

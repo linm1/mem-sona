@@ -155,7 +155,7 @@ await new Promise(resolve => setTimeout(resolve, PERFORMANCE_CONFIG.REINDEX_DELA
   - `DECAY_RATE`: 0.9 (10% decay per 30-day period)
   - `MIN_THRESHOLD`: 0.1 (archive edges below this weight)
 - `SEARCH_CONFIG` - Search and retrieval configuration
-  - `RELEVANCE_THRESHOLD`: 0.7 (minimum score for search results)
+  - `RELEVANCE_THRESHOLD`: 0.3 (minimum score for search results - Convex scores range 0.2-0.7, not 0-1)
   - `SIMILARITY_THRESHOLD`: 0.95 (duplicate detection threshold)
   - `TIME_DECAY_HALFLIFE_DAYS`: 30 (half-life for time-decay scoring)
   - `HOT_MEMORY_ACCESS_THRESHOLD`: 2 (minimum accesses for hot memory)
@@ -508,10 +508,14 @@ All system constants are centralized in `convex/utils/constants.ts` for easy mai
 | `TIME_CONSTANTS.ONE_EIGHTY_DAYS_MS` | `utils/constants.ts` | 15552000000 | Item reindexing threshold |
 | `EDGE_WEIGHT_CONFIG.DECAY_RATE` | `utils/constants.ts` | 0.9 | Edge weight decay per 30-day period |
 | `EDGE_WEIGHT_CONFIG.MIN_THRESHOLD` | `utils/constants.ts` | 0.1 | Archive edges below this weight |
-| `SEARCH_CONFIG.RELEVANCE_THRESHOLD` | `utils/constants.ts` | 0.7 | Minimum score for search results |
+| `SEARCH_CONFIG.RELEVANCE_THRESHOLD` | `utils/constants.ts` | 0.3 | Deprecated - RRF uses Top-K instead |
 | `SEARCH_CONFIG.SIMILARITY_THRESHOLD` | `utils/constants.ts` | 0.95 | Duplicate detection threshold |
 | `SEARCH_CONFIG.TIME_DECAY_HALFLIFE_DAYS` | `utils/constants.ts` | 30 | Half-life for time-decay scoring |
 | `SEARCH_CONFIG.HOT_MEMORY_ACCESS_THRESHOLD` | `utils/constants.ts` | 2 | Minimum accesses for hot memory |
+| `RRF_CONFIG.CONSTANT` | `utils/constants.ts` | 60 | RRF constant (k) - experimentally optimal |
+| `RRF_CONFIG.VECTOR_WEIGHT` | `utils/constants.ts` | 0.6 | Weight for vector search (semantic similarity) |
+| `RRF_CONFIG.GRAPH_WEIGHT` | `utils/constants.ts` | 0.4 | Weight for graph search (relationships) |
+| `RRF_CONFIG.DEFAULT_TOP_K` | `utils/constants.ts` | 20 | Default results to return (replaces threshold) |
 | `PERFORMANCE_CONFIG.REINDEX_DELAY_MS` | `utils/constants.ts` | 10 | Delay between reindexing operations |
 | `VOYAGE_CONFIG.dimensions` | `utils/voyage.ts` | 1024 | Embedding vector dimensions |
 | `VOYAGE_CONFIG.model` | `utils/voyage.ts` | "voyage-4" | Embedding model name |
@@ -707,3 +711,17 @@ Process improvements were **documented but not made mandatory checkpoints**.
 - ✅ Document API versions, models, parameters in code
 - ✅ Subscribe to changelogs for all external services
 - ✅ Review process documents monthly for staleness
+- ✅ Test search/retrieval with real queries and validate results (don't assume thresholds work)
+
+#### 6. Convex Vector Search Score Ranges (Sprint-003 Fix)
+- **Issue:** Set `RELEVANCE_THRESHOLD` to 0.7, assuming scores were 0-1 normalized
+- **Reality:** Convex vector search scores typically range 0.2-0.7, NOT 0-1
+- **Impact:** All search queries returned 0 results despite having relevant data (scores 0.4-0.67 filtered out)
+- **Root Cause:** Assumed vector similarity scores would be normalized to 0-1 range like cosine similarity
+- **Prevention:**
+  - Test search with real queries during development, not just at deployment
+  - Log actual score distributions before setting thresholds
+  - Understand platform-specific score ranges (Convex, Pinecone, Weaviate all differ)
+  - Set thresholds based on empirical testing, not assumptions
+  - Document score ranges in constants comments (e.g., "Convex scores 0.2-0.7")
+- **Fix:** Lowered threshold from 0.7 to 0.3 based on actual score distribution

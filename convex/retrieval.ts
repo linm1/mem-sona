@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalAction, action } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { SEARCH_CONFIG } from "./utils/constants";
+import { SEARCH_CONFIG, RRF_CONFIG } from "./utils/constants";
 
 /**
  * Results from vector search on items table.
@@ -123,6 +123,110 @@ export type HybridSearchResult = {
   executionTime: number;
 };
 
+// ============ RRF (RECIPROCAL RANK FUSION) TYPES ============
+
+/**
+ * Input type for vector search results in RRF fusion.
+ * Represents atomic facts from the file-based memory layer.
+ *
+ * IMPORTANT: Results must be sorted by raw score (descending) for proper RRF ranking.
+ * Time-decay is NOT applied to these scores - it's applied AFTER fusion.
+ */
+export type RRFVectorInput = {
+  /** Unique ID of the item in the items table */
+  itemId: Id<"items">;
+  /** The actual fact/content text */
+  content: string;
+  /** RAW similarity score from vector search (no time-decay applied) */
+  rawScore: number;
+  /** Unix timestamp (ms) when item was created - needed for post-fusion time-decay */
+  timestamp: number;
+  /** Category classification (e.g., "tech_preferences", "projects") */
+  category: string;
+};
+
+/**
+ * Convex validator for RRFVectorInput type.
+ * Used for type-safe argument validation in internal actions.
+ */
+const rrfVectorInputValidator = v.object({
+  itemId: v.id("items"),
+  content: v.string(),
+  rawScore: v.number(),
+  timestamp: v.number(),
+  category: v.string(),
+});
+
+/**
+ * Input type for graph search results in RRF fusion.
+ * Represents entities (projects, tools, skills) from the graph-based memory layer.
+ *
+ * IMPORTANT: Results must be sorted by raw score (descending) for proper RRF ranking.
+ * Time-decay is NOT applied to these scores - it's applied AFTER fusion.
+ */
+export type RRFGraphInput = {
+  /** Unique ID of the node in the graphNodes table */
+  nodeId: Id<"graphNodes">;
+  /** Node type classification (e.g., "project", "tool", "skill", "concept") */
+  nodeType: string;
+  /** Contextual description of the node including relationships */
+  context: string;
+  /** RAW similarity score from vector search (no time-decay applied) */
+  rawScore: number;
+  /** Unix timestamp (ms) when node was created - needed for post-fusion time-decay */
+  timestamp: number;
+  /** Number of edges connected to this node (relationship count) */
+  edges: number;
+};
+
+/**
+ * Convex validator for RRFGraphInput type.
+ * Used for type-safe argument validation in internal actions.
+ */
+const rrfGraphInputValidator = v.object({
+  nodeId: v.id("graphNodes"),
+  nodeType: v.string(),
+  context: v.string(),
+  rawScore: v.number(),
+  timestamp: v.number(),
+  edges: v.number(),
+});
+
+/**
+ * Output type from RRF fusion algorithm.
+ * Represents a merged result with RRF score and time-decay applied.
+ *
+ * The finalScore is calculated as: RRF_score × time_decay_factor
+ * Where RRF_score = Σ(weight_i × 1/(rank_i + k))
+ */
+export type RRFFusedResult = {
+  /** Type of memory source: item (file-based) or node (graph-based) */
+  type: "item" | "node";
+  /** The content/context text to display */
+  content: string;
+  /** RRF score BEFORE time-decay (for debugging/analysis) */
+  rrfScore: number;
+  /** Final score AFTER applying time-decay: rrfScore × decayFactor */
+  finalScore: number;
+  /** Unix timestamp (ms) - earliest timestamp if content appeared in both sources */
+  timestamp: number;
+  /** Which search contributed this result: vector-only, graph-only, or both */
+  sources: Array<"vector" | "graph">;
+};
+
+/**
+ * Convex validator for RRFFusedResult type.
+ * Used for type-safe argument validation in internal actions.
+ */
+const rrfFusedResultValidator = v.object({
+  type: v.union(v.literal("item"), v.literal("node")),
+  content: v.string(),
+  rrfScore: v.number(),
+  finalScore: v.number(),
+  timestamp: v.number(),
+  sources: v.array(v.union(v.literal("vector"), v.literal("graph"))),
+});
+
 /**
  * Calculate time-decay factor for memory relevance scoring.
  * Uses configurable half-life: recent memories score higher than old ones.
@@ -167,14 +271,122 @@ export function hashContent(content: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+// ============ RRF FUSION ALGORITHM ============
+
+/**
+ * Weighted Time-Decay Reciprocal Rank Fusion (RRF) algorithm.
+ *
+ * Combines ranked results from vector and graph search using RRF,
+ * then applies time-decay AFTER fusion for clean separation of concerns.
+ *
+ * Why RRF over score averaging:
+ * - Immune to score range differences (vector vs graph scores may differ)
+ * - Focuses on ranking consistency, not absolute scores
+ * - Duplicates get accumulated RRF scores (boosted, not averaged)
+ * - No threshold needed - always returns Top-K results
+ *
+ * Formula:
+ * - RRF_score = Σ(weight_i × 1/(rank_i + k))
+ * - final_score = RRF_score × decay_factor
+ * - decay_factor = 1 / (1 + age_days / half_life_days)
+ *
+ * @param vectorResults - Results from vector search, sorted by rawScore (descending)
+ * @param graphResults - Results from graph search, sorted by rawScore (descending)
+ * @param topK - Maximum number of results to return (default: RRF_CONFIG.DEFAULT_TOP_K)
+ * @returns Array of RRFFusedResult sorted by finalScore (descending)
+ */
+export function weightedTimeDecayRRF(
+  vectorResults: Array<RRFVectorInput>,
+  graphResults: Array<RRFGraphInput>,
+  topK: number = RRF_CONFIG.DEFAULT_TOP_K
+): Array<RRFFusedResult> {
+  // Map for accumulating RRF scores by content hash
+  const fused = new Map<string, {
+    type: "item" | "node";
+    rrfScore: number;
+    timestamp: number;
+    content: string;
+    sources: Set<"vector" | "graph">;
+  }>();
+
+  // Process vector results (must be sorted by rawScore, descending)
+  vectorResults.forEach((item: RRFVectorInput, index: number) => {
+    const rank = index + 1; // 1-indexed for RRF formula
+    const key = hashContent(item.content);
+    const contribution = RRF_CONFIG.VECTOR_WEIGHT * (1 / (rank + RRF_CONFIG.CONSTANT));
+
+    if (fused.has(key)) {
+      // Content already exists - accumulate RRF score
+      const existing = fused.get(key)!;
+      existing.rrfScore += contribution;
+      existing.sources.add("vector");
+      // Keep earliest timestamp for time-decay (more conservative)
+      existing.timestamp = Math.min(existing.timestamp, item.timestamp);
+    } else {
+      // New content from vector search
+      fused.set(key, {
+        type: "item",
+        rrfScore: contribution,
+        timestamp: item.timestamp,
+        content: item.content,
+        sources: new Set<"vector" | "graph">(["vector"]),
+      });
+    }
+  });
+
+  // Process graph results (must be sorted by rawScore, descending)
+  graphResults.forEach((item: RRFGraphInput, index: number) => {
+    const rank = index + 1; // 1-indexed for RRF formula
+    const key = hashContent(item.context);
+    const contribution = RRF_CONFIG.GRAPH_WEIGHT * (1 / (rank + RRF_CONFIG.CONSTANT));
+
+    if (fused.has(key)) {
+      // Content already exists - accumulate RRF score
+      const existing = fused.get(key)!;
+      existing.rrfScore += contribution;
+      existing.sources.add("graph");
+      // Keep earliest timestamp for time-decay
+      existing.timestamp = Math.min(existing.timestamp, item.timestamp);
+    } else {
+      // New content from graph search
+      fused.set(key, {
+        type: "node",
+        rrfScore: contribution,
+        timestamp: item.timestamp,
+        content: item.context,
+        sources: new Set<"vector" | "graph">(["graph"]),
+      });
+    }
+  });
+
+  // Apply time-decay AFTER fusion and convert to result array
+  const results: Array<RRFFusedResult> = Array.from(fused.values()).map((item) => {
+    // Calculate time-decay factor using existing function
+    const decayFactor = calculateTimeDecay(item.timestamp);
+
+    return {
+      type: item.type,
+      content: item.content,
+      rrfScore: item.rrfScore,
+      finalScore: item.rrfScore * decayFactor,
+      timestamp: item.timestamp,
+      sources: Array.from(item.sources),
+    };
+  });
+
+  // Sort by finalScore (descending) and return Top-K
+  results.sort((a: RRFFusedResult, b: RRFFusedResult) => b.finalScore - a.finalScore);
+  return results.slice(0, topK);
+}
+
 // ============ SEARCH PIPELINES ============
 
 /**
- * Vector search pipeline for file-based memory layer.
+ * Vector search pipeline for file-based memory layer (LEGACY).
  * Searches items table using semantic similarity, applies time-decay scoring.
  *
- * This pipeline is called by hybridSearch (US-017) to search atomic facts.
- * Results are ranked by similarity with time-decay applied (recent facts rank higher).
+ * @deprecated Use vectorSearchPipelineRRF for new RRF-based hybrid search.
+ * This pipeline is kept for backward compatibility with existing hybridSearch.
  *
  * @param embedding - Query embedding vector (1024 dimensions from voyage-4)
  * @param category - Optional category filter (e.g., "tech_preferences", "projects")
@@ -215,7 +427,7 @@ export const vectorSearchPipeline = internalAction({
       itemIds,
     });
 
-    // Apply time-decay scoring and build results
+    // Apply time-decay scoring and build results (LEGACY behavior)
     const results: Array<VectorResult> = items.map((item: Doc<"items">) => {
       // Find the corresponding search result to get the score
       const searchResult = searchResults.find((r) => r._id === item._id);
@@ -236,7 +448,7 @@ export const vectorSearchPipeline = internalAction({
     });
 
     // Sort by decayed score (highest first)
-    results.sort((a, b) => b.score - a.score);
+    results.sort((a: VectorResult, b: VectorResult) => b.score - a.score);
 
     // Return top N results
     return results.slice(0, limit);
@@ -244,11 +456,82 @@ export const vectorSearchPipeline = internalAction({
 });
 
 /**
- * Graph search pipeline for relationship-based memory layer.
+ * Vector search pipeline for RRF-based hybrid search.
+ * Searches items table using semantic similarity and returns RAW scores.
+ *
+ * IMPORTANT: This pipeline returns raw scores WITHOUT time-decay applied.
+ * Time-decay is applied AFTER RRF fusion in weightedTimeDecayRRF().
+ * Results are sorted by raw score (descending) for proper RRF ranking.
+ *
+ * @param embedding - Query embedding vector (1024 dimensions from voyage-4)
+ * @param category - Optional category filter (e.g., "tech_preferences", "projects")
+ * @param limit - Maximum number of results to return (default: 20)
+ * @returns Array of RRFVectorInput objects sorted by rawScore (descending)
+ */
+export const vectorSearchPipelineRRF = internalAction({
+  args: {
+    embedding: v.array(v.float64()),
+    category: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<RRFVectorInput>> => {
+    const limit = args.limit ?? 20;
+
+    // Build search query with optional category filter
+    const searchQuery: {
+      vector: number[];
+      limit: number;
+      filter?: (q: any) => any;
+    } = {
+      vector: args.embedding,
+      limit: limit * 2, // Get extra results for filtering
+    };
+
+    // Add category filter if specified
+    if (args.category) {
+      const category = args.category; // Capture for closure
+      searchQuery.filter = (q) => q.eq("category", category);
+    }
+
+    // Execute vector search on items table
+    const searchResults = await ctx.vectorSearch("items", "by_embedding", searchQuery);
+
+    // Load full item documents
+    const itemIds = searchResults.map((result) => result._id);
+    const items: Doc<"items">[] = await ctx.runQuery(internal.items.fetchItemsByIds, {
+      itemIds,
+    });
+
+    // Build results with RAW scores (no time-decay)
+    const results: Array<RRFVectorInput> = items.map((item: Doc<"items">) => {
+      // Find the corresponding search result to get the raw score
+      const searchResult = searchResults.find((r) => r._id === item._id);
+      const rawScore = searchResult?._score ?? 0;
+
+      // Build RRFVectorInput object (no time-decay applied)
+      return {
+        itemId: item._id,
+        content: item.content,
+        rawScore, // RAW score for RRF ranking
+        timestamp: item.createdAt, // Preserved for post-fusion time-decay
+        category: item.category,
+      };
+    });
+
+    // Sort by raw score (highest first) - critical for RRF ranking
+    results.sort((a: RRFVectorInput, b: RRFVectorInput) => b.rawScore - a.rawScore);
+
+    // Return top N results
+    return results.slice(0, limit);
+  },
+});
+
+/**
+ * Graph search pipeline for relationship-based memory layer (LEGACY).
  * Searches graphNodes table using semantic similarity, expands 1-hop relationships.
  *
- * This pipeline is called by hybridSearch (US-017) to search entities and their connections.
- * Results include node information plus active relationships (edges) formatted as context.
+ * @deprecated Use graphSearchPipelineRRF for new RRF-based hybrid search.
+ * This pipeline is kept for backward compatibility with existing hybridSearch.
  *
  * Context format example:
  * ```
@@ -341,7 +624,7 @@ export const graphSearchPipeline = internalAction({
       // Get similarity score from search result
       const score = searchResult._score ?? 0;
 
-      // Apply time-decay factor (30-day half-life)
+      // Apply time-decay factor (30-day half-life) - LEGACY behavior
       const decayFactor = calculateTimeDecay(node.createdAt);
       const decayedScore = score * decayFactor;
 
@@ -357,7 +640,125 @@ export const graphSearchPipeline = internalAction({
     }
 
     // Sort by decayed score (highest first)
-    results.sort((a, b) => b.score - a.score);
+    results.sort((a: GraphResult, b: GraphResult) => b.score - a.score);
+
+    // Return top N results
+    return results.slice(0, limit);
+  },
+});
+
+/**
+ * Graph search pipeline for RRF-based hybrid search.
+ * Searches graphNodes table using semantic similarity, expands 1-hop relationships.
+ *
+ * IMPORTANT: This pipeline returns raw scores WITHOUT time-decay applied.
+ * Time-decay is applied AFTER RRF fusion in weightedTimeDecayRRF().
+ * Results are sorted by raw score (descending) for proper RRF ranking.
+ *
+ * Context format example:
+ * ```
+ * project: mem-sona - Personal memory infrastructure for AI agents
+ * Relationships:
+ *   - uses: Convex
+ *   - uses: voyage-4
+ *   - requires: TypeScript
+ * ```
+ *
+ * @param embedding - Query embedding vector (1024 dimensions from voyage-4)
+ * @param nodeType - Optional node type filter (e.g., "project", "tool", "skill")
+ * @param limit - Maximum number of results to return (default: 10)
+ * @returns Array of RRFGraphInput objects sorted by rawScore (descending)
+ */
+export const graphSearchPipelineRRF = internalAction({
+  args: {
+    embedding: v.array(v.float64()),
+    nodeType: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Array<RRFGraphInput>> => {
+    const limit = args.limit ?? 10;
+
+    // Build search query with optional nodeType filter
+    const searchQuery: {
+      vector: number[];
+      limit: number;
+      filter?: (q: any) => any;
+    } = {
+      vector: args.embedding,
+      limit: limit * 2, // Get extra results for filtering
+    };
+
+    // Add nodeType filter if specified
+    if (args.nodeType) {
+      const nodeType = args.nodeType; // Capture for closure
+      searchQuery.filter = (q) => q.eq("type", nodeType);
+    }
+
+    // Execute vector search on graphNodes table
+    const searchResults = await ctx.vectorSearch("graphNodes", "by_embedding", searchQuery);
+
+    // Load full node documents and expand 1-hop relationships
+    const results: Array<RRFGraphInput> = [];
+
+    for (const searchResult of searchResults) {
+      // Load the full node document
+      const node = await ctx.runQuery(internal.graph.getNodeInternal, {
+        nodeId: searchResult._id,
+      });
+
+      if (!node || node.status !== "active") {
+        continue; // Skip archived or deleted nodes
+      }
+
+      // Get all edges from this node (1-hop expansion)
+      const edges: Doc<"graphEdges">[] = await ctx.runQuery(internal.graph.getEdgesFromInternal, {
+        fromNodeId: node._id,
+      });
+
+      // Filter for active edges only
+      const activeEdges = edges.filter((edge: Doc<"graphEdges">) => edge.status === "active");
+
+      // Build relationships context string
+      const relationships: Array<string> = [];
+
+      for (const edge of activeEdges) {
+        // Load the target node
+        const targetNode = await ctx.runQuery(internal.graph.getNodeInternal, {
+          nodeId: edge.toNode,
+        });
+
+        if (targetNode && targetNode.status === "active") {
+          // Format as: "relationship: targetName"
+          relationships.push(`${edge.relationship}: ${targetNode.name}`);
+        }
+      }
+
+      // Format context string
+      const description = node.properties.description || "";
+      let context = `${node.type}: ${node.name}`;
+      if (description) {
+        context += ` - ${description}`;
+      }
+      if (relationships.length > 0) {
+        context += `\nRelationships:\n  - ${relationships.join("\n  - ")}`;
+      }
+
+      // Get RAW similarity score from search result (no time-decay)
+      const rawScore = searchResult._score ?? 0;
+
+      // Build RRFGraphInput object (no time-decay applied)
+      results.push({
+        nodeId: node._id,
+        nodeType: node.type,
+        context,
+        rawScore, // RAW score for RRF ranking
+        timestamp: node.createdAt, // Preserved for post-fusion time-decay
+        edges: activeEdges.length,
+      });
+    }
+
+    // Sort by raw score (highest first) - critical for RRF ranking
+    results.sort((a: RRFGraphInput, b: RRFGraphInput) => b.rawScore - a.rawScore);
 
     // Return top N results
     return results.slice(0, limit);
@@ -515,19 +916,25 @@ export const assembleContextWindow = internalAction({
 
 /**
  * Main hybrid search action (PUBLIC - called by MCP server).
- * Orchestrates parallel vector + graph search, merges results, and assembles context.
+ * Orchestrates parallel vector + graph search, merges results using RRF, and assembles context.
  *
  * This is the PRIMARY entry point for the `memory_search` MCP tool.
  * It combines the power of semantic search (vector) with relationship traversal (graph)
  * to provide the most relevant memory results for any query.
  *
- * Execution flow:
+ * Execution flow (Sprint-004 RRF Update):
  * 1. Generate query embedding (voyage-4, inputType: "query")
- * 2. Parallel search: vectorSearchPipeline + graphSearchPipeline
- * 3. Merge results: deduplication + score averaging
- * 4. Filter by relevance: finalScore > 0.7
+ * 2. Parallel search: vectorSearchPipelineRRF + graphSearchPipelineRRF (raw scores)
+ * 3. RRF fusion: weightedTimeDecayRRF() combines results with time-decay
+ * 4. Map RRFFusedResult to MergedResult for backward compatibility
  * 5. Assemble context: markdown formatting with token budget
  * 6. Return HybridSearchResult with execution time
+ *
+ * Key changes from legacy implementation:
+ * - Uses RRF pipelines that return RAW scores (no time-decay applied)
+ * - Uses weightedTimeDecayRRF() for fusion (replaces mergeAndRankResults)
+ * - No threshold filtering - RRF returns Top-K directly (default: 20)
+ * - Time-decay applied AFTER fusion for cleaner scoring
  *
  * Performance target: < 500ms end-to-end
  *
@@ -560,32 +967,51 @@ export const hybridSearch = action({
       inputType: "query", // Voyage AI optimization hint for search queries
     });
 
-    // Parallel search: vector + graph pipelines
+    // Parallel search: RRF pipelines return RAW scores (no time-decay)
     const [vectorResults, graphResults] = await Promise.all([
-      ctx.runAction(internal.retrieval.vectorSearchPipeline, {
+      ctx.runAction(internal.retrieval.vectorSearchPipelineRRF, {
         embedding,
         limit: 20,
       }),
-      ctx.runAction(internal.retrieval.graphSearchPipeline, {
+      ctx.runAction(internal.retrieval.graphSearchPipelineRRF, {
         embedding,
         limit: 10,
       }),
     ]);
 
-    // Merge results (deduplication + score averaging)
-    const merged: MergedResult[] = await ctx.runAction(internal.retrieval.mergeAndRankResults, {
+    // RRF fusion with time-decay (replaces mergeAndRankResults + threshold filtering)
+    // Returns Top-K results directly - no additional filtering needed
+    const rrfResults: Array<RRFFusedResult> = weightedTimeDecayRRF(
       vectorResults,
       graphResults,
-      query: args.query,
-    });
+      RRF_CONFIG.DEFAULT_TOP_K
+    );
 
-    // Relevance filtering using configured threshold
-    const filtered = merged.filter((r: MergedResult) => r.finalScore > SEARCH_CONFIG.RELEVANCE_THRESHOLD);
+    // Map RRFFusedResult to MergedResult for backward compatibility with assembleContextWindow
+    // This preserves the existing context assembly logic and output format
+    const mergedResults: Array<MergedResult> = rrfResults.map((r: RRFFusedResult): MergedResult => {
+      // Determine source: "hybrid" if from both, otherwise first source
+      let source: "vector" | "graph" | "hybrid";
+      if (r.sources.length > 1) {
+        source = "hybrid";
+      } else {
+        source = r.sources[0] || "vector";
+      }
+
+      return {
+        type: r.type,
+        content: r.content,
+        score: r.rrfScore, // Use RRF score as original score
+        finalScore: r.finalScore, // RRF score * time-decay
+        timestamp: r.timestamp,
+        source,
+      };
+    });
 
     // Assemble context (markdown formatting with token budget)
     const maxTokens = args.maxTokens ?? 2000;
     const context = await ctx.runAction(internal.retrieval.assembleContextWindow, {
-      results: filtered,
+      results: mergedResults,
       maxTokens,
       query: args.query,
     });
@@ -596,7 +1022,7 @@ export const hybridSearch = action({
     // Return HybridSearchResult
     return {
       query: args.query,
-      results: filtered,
+      results: mergedResults,
       context,
       executionTime,
     };
