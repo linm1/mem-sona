@@ -5,13 +5,7 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalAction, action } from "./_generated/server";
 import { internal } from "./_generated/api";
-
-/**
- * Relevance threshold for filtering search results.
- * Results with finalScore below this threshold are excluded.
- * Value chosen based on empirical testing to balance precision and recall.
- */
-const RELEVANCE_THRESHOLD = 0.7;
+import { SEARCH_CONFIG } from "./utils/constants";
 
 /**
  * Results from vector search on items table.
@@ -131,21 +125,21 @@ export type HybridSearchResult = {
 
 /**
  * Calculate time-decay factor for memory relevance scoring.
- * Uses 30-day half-life: recent memories score higher than old ones.
+ * Uses configurable half-life: recent memories score higher than old ones.
  *
  * This implements temporal decay to prioritize recent information over stale facts.
- * Formula: decay = 1.0 / (1.0 + (ageDays / 30))
+ * Formula: decay = 1.0 / (1.0 + (ageDays / halfLifeDays))
  * - 0 days old → 1.0 (full weight)
- * - 30 days old → 0.5 (half weight)
- * - 60 days old → 0.33 (one-third weight)
- * - 365 days old → 0.076 (heavily decayed)
+ * - halfLifeDays old → 0.5 (half weight)
+ * - 2*halfLifeDays old → 0.33 (one-third weight)
+ * - 365 days old → 0.076 (heavily decayed, with 30-day half-life)
  *
  * @param timestamp - Unix timestamp in milliseconds of when memory was created/updated
  * @returns Decay factor between 0 and 1 (1.0 = current, approaches 0 for very old)
  */
 export function calculateTimeDecay(timestamp: number): number {
   const ageDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
-  return 1.0 / (1.0 + (ageDays / 30)); // 30-day half-life
+  return 1.0 / (1.0 + (ageDays / SEARCH_CONFIG.TIME_DECAY_HALFLIFE_DAYS));
 }
 
 /**
@@ -586,7 +580,7 @@ export const hybridSearch = action({
     });
 
     // Relevance filtering using configured threshold
-    const filtered = merged.filter((r: MergedResult) => r.finalScore > RELEVANCE_THRESHOLD);
+    const filtered = merged.filter((r: MergedResult) => r.finalScore > SEARCH_CONFIG.RELEVANCE_THRESHOLD);
 
     // Assemble context (markdown formatting with token budget)
     const maxTokens = args.maxTokens ?? 2000;

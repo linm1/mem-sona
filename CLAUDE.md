@@ -35,7 +35,9 @@ mem-sona/
 │   ├── crons.ts          # Scheduled job definitions
 │   └── utils/            # Shared utilities (NEW)
 │       ├── gemini.ts     # Gemini API retry logic + JSON parsing
-│       └── voyage.ts     # Voyage AI embedding utilities
+│       ├── voyage.ts     # Voyage AI embedding utilities
+│       ├── math.ts       # Mathematical operations (cosine similarity, etc.)
+│       └── constants.ts  # Centralized configuration constants
 ├── mcp-server/           # MCP server for Claude Code, Copilot, Cursor
 │   └── src/
 │       ├── index.ts      # MCP server entry
@@ -94,22 +96,99 @@ const result = parseGeminiJson<MyType>(responseText);
 - `callGeminiWithRetry(model, prompt, retries?)` - Retries with exponential backoff
 - `parseGeminiJson<T>(responseText)` - Parses JSON, strips markdown code blocks
 
-### MCP Type Definitions (`mcp-server/src/types.ts`)
+### Math Utilities (`convex/utils/math.ts`)
 
-**ALWAYS use these types for MCP tool arguments.** Provides type safety for handlers.
+**ALWAYS use these utilities for vector operations.** Do NOT reimplement mathematical functions elsewhere.
 
 ```typescript
-import type {
-  MemorySearchArgs,
-  MemoryAddFactArgs,
-  MemoryGetContextArgs,
-  MemoryLogSessionArgs,
-  MemoryAddEntityArgs,
-  MemoryAddRelationshipArgs,
-  MemoryGetProjectArgs,
+import { cosineSimilarity } from "./utils/math";
+
+// Calculate cosine similarity between two embedding vectors
+const similarity = cosineSimilarity(embedding1, embedding2);
+// Returns: number between -1 and 1
+// 1 = identical, 0 = orthogonal, -1 = opposite
+```
+
+**Key exports:**
+- `cosineSimilarity(vecA, vecB)` - Calculates cosine similarity between two vectors
+  - Returns score between -1 and 1
+  - Throws error if vector dimensions don't match
+  - Used for duplicate detection, semantic similarity
+
+### Configuration Constants (`convex/utils/constants.ts`)
+
+**ALWAYS use these constants for time thresholds and configuration.** Do NOT use inline calculations or magic numbers.
+
+```typescript
+import {
+  TIME_CONSTANTS,
+  EDGE_WEIGHT_CONFIG,
+  SEARCH_CONFIG,
+  PERFORMANCE_CONFIG,
+  msToDays,
+  daysToMs,
+} from "./utils/constants";
+
+// Time thresholds
+const isStale = (Date.now() - timestamp) > TIME_CONSTANTS.NINETY_DAYS_MS;
+const daysSinceUpdate = msToDays(Date.now() - node.updatedAt);
+
+// Edge weight decay
+const decayedWeight = weight * Math.pow(EDGE_WEIGHT_CONFIG.DECAY_RATE, decayPeriods);
+if (decayedWeight < EDGE_WEIGHT_CONFIG.MIN_THRESHOLD) { /* archive */ }
+
+// Search configuration
+const filtered = results.filter(r => r.score > SEARCH_CONFIG.RELEVANCE_THRESHOLD);
+if (similarity > SEARCH_CONFIG.SIMILARITY_THRESHOLD) { /* duplicate */ }
+
+// Performance tuning
+await new Promise(resolve => setTimeout(resolve, PERFORMANCE_CONFIG.REINDEX_DELAY_MS));
+```
+
+**Key exports:**
+- `TIME_CONSTANTS` - Time thresholds for maintenance operations
+  - `SEVEN_DAYS_MS`: Hot memory detection window (604800000ms)
+  - `THIRTY_DAYS_MS`: Item summarization, edge decay period (2592000000ms)
+  - `NINETY_DAYS_MS`: Orphan node archival, item deletion (7776000000ms)
+  - `ONE_EIGHTY_DAYS_MS`: Item reindexing threshold (15552000000ms)
+- `EDGE_WEIGHT_CONFIG` - Graph edge weight decay settings
+  - `DECAY_RATE`: 0.9 (10% decay per 30-day period)
+  - `MIN_THRESHOLD`: 0.1 (archive edges below this weight)
+- `SEARCH_CONFIG` - Search and retrieval configuration
+  - `RELEVANCE_THRESHOLD`: 0.7 (minimum score for search results)
+  - `SIMILARITY_THRESHOLD`: 0.95 (duplicate detection threshold)
+  - `TIME_DECAY_HALFLIFE_DAYS`: 30 (half-life for time-decay scoring)
+  - `HOT_MEMORY_ACCESS_THRESHOLD`: 2 (minimum accesses for hot memory)
+- `PERFORMANCE_CONFIG` - Performance tuning constants
+  - `REINDEX_DELAY_MS`: 10 (delay between reindexing operations)
+- `msToDays(ms)` - Convert milliseconds to days (for logging/display)
+- `daysToMs(days)` - Convert days to milliseconds (for dynamic thresholds)
+
+### MCP Type Definitions & Validation (`mcp-server/src/types.ts`)
+
+**ALWAYS use these types and validators for MCP tool arguments.** Provides type safety and runtime validation.
+
+```typescript
+import {
+  validateArgs,
+  validators,
+  type MemorySearchArgs,
+  type MemoryAddFactArgs,
+  type MemoryGetContextArgs,
+  type MemoryLogSessionArgs,
+  type MemoryAddEntityArgs,
+  type MemoryAddRelationshipArgs,
+  type MemoryGetProjectArgs,
+  VALID_ENTITY_TYPES,
+  isValidEntityType,
 } from "./types.js";
 
-import { VALID_ENTITY_TYPES, isValidEntityType } from "./types.js";
+// Runtime validation with proper type safety
+const validated = validateArgs<MemorySearchArgs>(
+  args,
+  "MemorySearchArgs",
+  validators.memorySearch
+);
 
 // Validate entity type
 if (!isValidEntityType(type)) {
@@ -119,8 +198,41 @@ if (!isValidEntityType(type)) {
 
 **Key exports:**
 - `MemorySearchArgs`, `MemoryAddFactArgs`, etc. - Type definitions for each tool
+- `validateArgs<T>(args, typeName, validator)` - Runtime validation helper (replaces `as unknown as` casts)
+- `validators` - Object containing validation functions for each argument type
+  - `validators.memorySearch`, `validators.memoryAddFact`, etc.
+  - Each validator performs runtime type checking on required fields
 - `VALID_ENTITY_TYPES` - Array of valid entity types: `["project", "tool", "skill", "concept"]`
 - `isValidEntityType(type)` - Type guard for entity type validation
+
+**Argument Validation Pattern:**
+
+Instead of unsafe type assertions (`as unknown as`), use the `validateArgs` helper:
+
+```typescript
+// ❌ WRONG - Bypasses type checking
+const result = await handler(args as unknown as MemorySearchArgs);
+
+// ✅ CORRECT - Runtime validation with proper error handling
+const validated = validateArgs<MemorySearchArgs>(
+  args,
+  "MemorySearchArgs",
+  validators.memorySearch
+);
+const result = await handler(validated);
+```
+
+**How validateArgs Works:**
+1. Checks if `args` is an object (not null, undefined, or primitive)
+2. Runs custom validator function to check required fields and types
+3. Throws descriptive error if validation fails
+4. Returns properly typed arguments if validation succeeds
+
+**Benefits:**
+- Runtime type safety (catches invalid arguments before handlers execute)
+- Better error messages (specific validation failures)
+- Type safety without unsafe casts
+- Easier debugging (validation errors thrown early)
 
 ## Critical API Integration Requirements
 
@@ -386,9 +498,21 @@ cd mcp-server && npx tsc --noEmit   # Check MCP server
 
 ### Important Constants
 
+All system constants are centralized in `convex/utils/constants.ts` for easy maintenance. Import them instead of using inline calculations.
+
 | Constant | Location | Value | Purpose |
 |----------|----------|-------|---------|
-| `RELEVANCE_THRESHOLD` | `retrieval.ts` | 0.7 | Minimum score for search results |
+| `TIME_CONSTANTS.SEVEN_DAYS_MS` | `utils/constants.ts` | 604800000 | Hot memory detection window |
+| `TIME_CONSTANTS.THIRTY_DAYS_MS` | `utils/constants.ts` | 2592000000 | Item summarization, edge decay period |
+| `TIME_CONSTANTS.NINETY_DAYS_MS` | `utils/constants.ts` | 7776000000 | Orphan node archival, item deletion |
+| `TIME_CONSTANTS.ONE_EIGHTY_DAYS_MS` | `utils/constants.ts` | 15552000000 | Item reindexing threshold |
+| `EDGE_WEIGHT_CONFIG.DECAY_RATE` | `utils/constants.ts` | 0.9 | Edge weight decay per 30-day period |
+| `EDGE_WEIGHT_CONFIG.MIN_THRESHOLD` | `utils/constants.ts` | 0.1 | Archive edges below this weight |
+| `SEARCH_CONFIG.RELEVANCE_THRESHOLD` | `utils/constants.ts` | 0.7 | Minimum score for search results |
+| `SEARCH_CONFIG.SIMILARITY_THRESHOLD` | `utils/constants.ts` | 0.95 | Duplicate detection threshold |
+| `SEARCH_CONFIG.TIME_DECAY_HALFLIFE_DAYS` | `utils/constants.ts` | 30 | Half-life for time-decay scoring |
+| `SEARCH_CONFIG.HOT_MEMORY_ACCESS_THRESHOLD` | `utils/constants.ts` | 2 | Minimum accesses for hot memory |
+| `PERFORMANCE_CONFIG.REINDEX_DELAY_MS` | `utils/constants.ts` | 10 | Delay between reindexing operations |
 | `VOYAGE_CONFIG.dimensions` | `utils/voyage.ts` | 1024 | Embedding vector dimensions |
 | `VOYAGE_CONFIG.model` | `utils/voyage.ts` | "voyage-4" | Embedding model name |
 | `MAX_RETRIES` | `utils/gemini.ts` | 3 | Gemini API retry attempts |

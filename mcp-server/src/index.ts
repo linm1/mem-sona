@@ -12,14 +12,16 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { ToolHandlers } from "./handlers.js";
 import { TOOL_DEFINITIONS } from "./tools.js";
-import type {
-  MemorySearchArgs,
-  MemoryAddFactArgs,
-  MemoryGetContextArgs,
-  MemoryLogSessionArgs,
-  MemoryAddEntityArgs,
-  MemoryAddRelationshipArgs,
-  MemoryGetProjectArgs,
+import {
+  validateArgs,
+  validators,
+  type MemorySearchArgs,
+  type MemoryAddFactArgs,
+  type MemoryGetContextArgs,
+  type MemoryLogSessionArgs,
+  type MemoryAddEntityArgs,
+  type MemoryAddRelationshipArgs,
+  type MemoryGetProjectArgs,
 } from "./types.js";
 
 const CONVEX_URL = process.env.CONVEX_URL || "";
@@ -60,28 +62,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "memory_search":
-        return await handlers.handleMemorySearch(args as unknown as MemorySearchArgs);
+        return await handlers.handleMemorySearch(
+          validateArgs<MemorySearchArgs>(args, "MemorySearchArgs", validators.memorySearch)
+        );
 
       case "memory_add_fact":
-        return await handlers.handleMemoryAddFact(args as unknown as MemoryAddFactArgs);
+        return await handlers.handleMemoryAddFact(
+          validateArgs<MemoryAddFactArgs>(args, "MemoryAddFactArgs", validators.memoryAddFact)
+        );
 
       case "memory_get_context":
-        return await handlers.handleMemoryGetContext(args as unknown as MemoryGetContextArgs);
+        return await handlers.handleMemoryGetContext(
+          validateArgs<MemoryGetContextArgs>(args, "MemoryGetContextArgs", validators.memoryGetContext)
+        );
 
       case "memory_log_session":
-        return await handlers.handleMemoryLogSession(args as unknown as MemoryLogSessionArgs);
+        return await handlers.handleMemoryLogSession(
+          validateArgs<MemoryLogSessionArgs>(args, "MemoryLogSessionArgs", validators.memoryLogSession)
+        );
 
       case "memory_get_profile":
         return await handlers.handleMemoryGetProfile();
 
       case "memory_add_entity":
-        return await handlers.handleMemoryAddEntity(args as unknown as MemoryAddEntityArgs);
+        return await handlers.handleMemoryAddEntity(
+          validateArgs<MemoryAddEntityArgs>(args, "MemoryAddEntityArgs", validators.memoryAddEntity)
+        );
 
       case "memory_add_relationship":
-        return await handlers.handleMemoryAddRelationship(args as unknown as MemoryAddRelationshipArgs);
+        return await handlers.handleMemoryAddRelationship(
+          validateArgs<MemoryAddRelationshipArgs>(args, "MemoryAddRelationshipArgs", validators.memoryAddRelationship)
+        );
 
       case "memory_get_project":
-        return await handlers.handleMemoryGetProject(args as unknown as MemoryGetProjectArgs);
+        return await handlers.handleMemoryGetProject(
+          validateArgs<MemoryGetProjectArgs>(args, "MemoryGetProjectArgs", validators.memoryGetProject)
+        );
 
       default:
         return {

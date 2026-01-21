@@ -7,6 +7,14 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { callGeminiWithRetry } from "./utils/gemini";
+import { cosineSimilarity } from "./utils/math";
+import {
+  TIME_CONSTANTS,
+  EDGE_WEIGHT_CONFIG,
+  SEARCH_CONFIG,
+  PERFORMANCE_CONFIG,
+  msToDays,
+} from "./utils/constants";
 
 /**
  * Graph cleanup internal action - runs weekly via cron job.
@@ -25,10 +33,6 @@ export const graphCleanup = internalAction({
     edgesArchived: number;
   }> => {
     const now = Date.now();
-    const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const DECAY_RATE = 0.9; // 10% decay per 30 days
-    const MIN_WEIGHT_THRESHOLD = 0.1; // Archive edges below this weight
 
     console.log("[graphCleanup] Starting maintenance run at", new Date(now).toISOString());
 
@@ -54,9 +58,9 @@ export const graphCleanup = internalAction({
       const totalActiveEdges = activeOutgoing.length + activeIncoming.length;
 
       // Check if node is orphaned and stale
-      const daysSinceUpdate = (now - node.updatedAt) / (24 * 60 * 60 * 1000);
+      const daysSinceUpdate = msToDays(now - node.updatedAt);
       const isOrphan = totalActiveEdges === 0;
-      const isStale = (now - node.updatedAt) > NINETY_DAYS_MS;
+      const isStale = (now - node.updatedAt) > TIME_CONSTANTS.NINETY_DAYS_MS;
 
       if (isOrphan && isStale) {
         console.log(
@@ -84,16 +88,16 @@ export const graphCleanup = internalAction({
     let edgesArchived = 0;
 
     for (const edge of activeEdges) {
-      const daysSinceUpdate = (now - edge.updatedAt) / (24 * 60 * 60 * 1000);
+      const daysSinceUpdate = msToDays(now - edge.updatedAt);
 
       // Only apply decay if edge hasn't been updated in 30+ days
       if (daysSinceUpdate >= 30) {
-        // Calculate decay: weight * 0.9^(days/30)
+        // Calculate decay: weight * DECAY_RATE^(days/30)
         const decayPeriods = daysSinceUpdate / 30;
-        const decayedWeight = edge.weight * Math.pow(DECAY_RATE, decayPeriods);
+        const decayedWeight = edge.weight * Math.pow(EDGE_WEIGHT_CONFIG.DECAY_RATE, decayPeriods);
 
         // Archive if weight falls below threshold
-        if (decayedWeight < MIN_WEIGHT_THRESHOLD) {
+        if (decayedWeight < EDGE_WEIGHT_CONFIG.MIN_THRESHOLD) {
           console.log(
             `[graphCleanup] Archiving low-weight edge: ` +
             `${edge.relationship} (weight: ${edge.weight.toFixed(3)} -> ${decayedWeight.toFixed(3)}) - ` +
@@ -162,8 +166,6 @@ export const weeklySummarization = internalAction({
     itemsDeleted: number;
   }> => {
     const now = Date.now();
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
     console.log("[weeklySummarization] Starting summarization run at", new Date(now).toISOString());
 
@@ -172,7 +174,7 @@ export const weeklySummarization = internalAction({
     console.log(`[weeklySummarization] Found ${allItems.length} total items`);
 
     // Find items older than 30 days
-    const oldItems = allItems.filter((item: Doc<"items">) => (now - item.createdAt) > THIRTY_DAYS_MS);
+    const oldItems = allItems.filter((item: Doc<"items">) => (now - item.createdAt) > TIME_CONSTANTS.THIRTY_DAYS_MS);
 
     if (oldItems.length === 0) {
       console.log("[weeklySummarization] No items older than 30 days found");
@@ -283,7 +285,7 @@ Write a well-organized summary that captures the key insights. Output ONLY the s
         console.log(`[weeklySummarization] Updated summary for category: ${category}`);
 
         // Delete items older than 90 days (data compression after summarization)
-        const veryOldItems = items.filter((item: Doc<"items">) => (now - item.createdAt) > NINETY_DAYS_MS);
+        const veryOldItems = items.filter((item: Doc<"items">) => (now - item.createdAt) > TIME_CONSTANTS.NINETY_DAYS_MS);
 
         if (veryOldItems.length > 0) {
           console.log(`[weeklySummarization] Deleting ${veryOldItems.length} items older than 90 days from category: ${category}`);
@@ -339,7 +341,6 @@ export const monthlyReindex = internalAction({
     nodesFailed: number;
   }> => {
     const now = Date.now();
-    const ONE_EIGHTY_DAYS_MS = 180 * 24 * 60 * 60 * 1000;
 
     console.log("[monthlyReindex] Starting reindex run at", new Date(now).toISOString());
 
@@ -355,8 +356,8 @@ export const monthlyReindex = internalAction({
     for (const item of allItems) {
       // Check if item hasn't been accessed in 180+ days
       // Use accessedAt as the reference point (stale items should be reindexed)
-      const daysSinceAccess = (now - item.accessedAt) / (24 * 60 * 60 * 1000);
-      const needsReindexing = (now - item.accessedAt) > ONE_EIGHTY_DAYS_MS;
+      const daysSinceAccess = msToDays(now - item.accessedAt);
+      const needsReindexing = (now - item.accessedAt) > TIME_CONSTANTS.ONE_EIGHTY_DAYS_MS;
 
       if (needsReindexing) {
         console.log(
@@ -383,8 +384,8 @@ export const monthlyReindex = internalAction({
           itemsSkipped++;
         }
 
-        // Add small delay to avoid hitting rate limits (10ms between requests)
-        await new Promise(resolve => setTimeout(resolve, 10));
+        // Add small delay to avoid hitting rate limits
+        await new Promise(resolve => setTimeout(resolve, PERFORMANCE_CONFIG.REINDEX_DELAY_MS));
       }
     }
 
@@ -407,7 +408,7 @@ export const monthlyReindex = internalAction({
     let nodesFailed = 0;
 
     for (const node of activeNodes) {
-      const daysSinceUpdate = (now - node.updatedAt) / (24 * 60 * 60 * 1000);
+      const daysSinceUpdate = msToDays(now - node.updatedAt);
       console.log(
         `[monthlyReindex] Reindexing node: ${node.name} (${node.type}) - ` +
         `${daysSinceUpdate.toFixed(1)} days since last update`
@@ -433,8 +434,8 @@ export const monthlyReindex = internalAction({
         nodesFailed++;
       }
 
-      // Add small delay to avoid hitting rate limits (10ms between requests)
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // Add small delay to avoid hitting rate limits
+      await new Promise(resolve => setTimeout(resolve, PERFORMANCE_CONFIG.REINDEX_DELAY_MS));
     }
 
     console.log(
@@ -453,40 +454,6 @@ export const monthlyReindex = internalAction({
     return summary;
   },
 });
-
-// ============ HELPER FUNCTIONS ============
-
-/**
- * Calculate cosine similarity between two embedding vectors.
- * Returns a value between -1 (opposite) and 1 (identical).
- *
- * @param vec1 - First embedding vector
- * @param vec2 - Second embedding vector
- * @returns Cosine similarity score
- */
-function cosineSimilarity(vec1: number[], vec2: number[]): number {
-  if (vec1.length !== vec2.length) {
-    throw new Error(`Vector dimension mismatch: ${vec1.length} vs ${vec2.length}`);
-  }
-
-  let dotProduct = 0;
-  let mag1 = 0;
-  let mag2 = 0;
-
-  for (let i = 0; i < vec1.length; i++) {
-    dotProduct += vec1[i] * vec2[i];
-    mag1 += vec1[i] * vec1[i];
-    mag2 += vec2[i] * vec2[i];
-  }
-
-  const magnitude = Math.sqrt(mag1) * Math.sqrt(mag2);
-
-  if (magnitude === 0) {
-    return 0;
-  }
-
-  return dotProduct / magnitude;
-}
 
 // ============ ITEM CONSOLIDATION ============
 
@@ -510,9 +477,6 @@ export const nightlyConsolidation = internalAction({
     hotMemories: number;
   }> => {
     const now = Date.now();
-    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-    const SIMILARITY_THRESHOLD = 0.95; // Very high threshold for duplicates
-    const HOT_MEMORY_ACCESS_THRESHOLD = 2; // Must be accessed at least twice
 
     console.log("[nightlyConsolidation] Starting maintenance run at", new Date(now).toISOString());
 
@@ -563,7 +527,7 @@ export const nightlyConsolidation = internalAction({
           const similarity = cosineSimilarity(item1.embedding, item2.embedding);
 
           // If similarity is above threshold, we have a duplicate
-          if (similarity > SIMILARITY_THRESHOLD) {
+          if (similarity > SEARCH_CONFIG.SIMILARITY_THRESHOLD) {
             // Keep the most recent item (higher createdAt), delete the older one
             const keepItem = item1.createdAt > item2.createdAt ? item1 : item2;
             const deleteItem = item1.createdAt > item2.createdAt ? item2 : item1;
@@ -596,11 +560,11 @@ export const nightlyConsolidation = internalAction({
     // ============ HOT MEMORY IDENTIFICATION ============
 
     // Find items accessed within the last 7 days with multiple accesses
-    const cutoffTime = now - SEVEN_DAYS_MS;
+    const cutoffTime = now - TIME_CONSTANTS.SEVEN_DAYS_MS;
 
     const hotMemories = allItems.filter((item: Doc<"items">) => {
       const isRecentlyAccessed = item.accessedAt >= cutoffTime;
-      const hasMultipleAccesses = item.accessCount >= HOT_MEMORY_ACCESS_THRESHOLD;
+      const hasMultipleAccesses = item.accessCount >= SEARCH_CONFIG.HOT_MEMORY_ACCESS_THRESHOLD;
       return isRecentlyAccessed && hasMultipleAccesses;
     });
 
@@ -610,7 +574,7 @@ export const nightlyConsolidation = internalAction({
     if (hotMemories.length > 0) {
       console.log("[nightlyConsolidation] Hot memories (frequently accessed in last 7 days):");
       for (const item of hotMemories) {
-        const daysSinceAccess = (now - item.accessedAt) / (24 * 60 * 60 * 1000);
+        const daysSinceAccess = msToDays(now - item.accessedAt);
         console.log(
           `  - Category: ${item.category}, Access count: ${item.accessCount}, ` +
           `Last accessed: ${daysSinceAccess.toFixed(1)} days ago, ` +
