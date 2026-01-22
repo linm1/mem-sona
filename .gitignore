@@ -97,3 +97,6 @@ temp/
 
 # Optional: Documentation builds (if generated)
 docs/build/
+
+# Dead code report
+.reports/

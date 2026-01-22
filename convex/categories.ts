@@ -58,6 +58,31 @@ export const getCategorySummary = query({
   },
 });
 
+/**
+ * List all categories with item counts.
+ * Public query for dashboard access.
+ *
+ * @returns Array of categories with metadata including item count
+ */
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const categories = await ctx.db.query("categories").collect();
+    const items = await ctx.db.query("items").collect();
+    const countsByCategory = items.reduce((acc, item) => {
+      acc[item.category] = (acc[item.category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    return categories.map((cat) => ({
+      _id: cat._id,
+      name: cat.name,
+      summary: cat.summary,
+      updatedAt: cat.updatedAt,
+      itemCount: countsByCategory[cat.name] || 0,
+    }));
+  },
+});
+
 // ============ MUTATIONS ============
 
 /**

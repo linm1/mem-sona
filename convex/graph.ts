@@ -443,6 +443,30 @@ export const listAllNodes = internalQuery({
   },
 });
 
+/**
+ * List all active nodes with optional type filter.
+ * Public query for dashboard access.
+ *
+ * @param type - Optional node type filter
+ * @returns Array of active nodes
+ */
+export const listActiveNodes = query({
+  args: { type: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<Array<Doc<"graphNodes">>> => {
+    if (args.type) {
+      return await ctx.db
+        .query("graphNodes")
+        .withIndex("by_type", (q) => q.eq("type", args.type))
+        .filter((q) => q.eq(q.field("status"), "active"))
+        .collect();
+    }
+    return await ctx.db
+      .query("graphNodes")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .collect();
+  },
+});
+
 // ============ EDGE MANAGEMENT ============
 
 /**
@@ -931,6 +955,27 @@ export const listActiveEdges = internalQuery({
   },
 });
 
+/**
+ * List all active edges with optional relationship filter.
+ * Public query for dashboard access.
+ *
+ * @param relationship - Optional relationship filter
+ * @returns Array of active edges
+ */
+export const listActiveEdgesPublic = query({
+  args: { relationship: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<Array<Doc<"graphEdges">>> => {
+    let edges = await ctx.db
+      .query("graphEdges")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .collect();
+    if (args.relationship) {
+      edges = edges.filter((e) => e.relationship === args.relationship);
+    }
+    return edges;
+  },
+});
+
 // ============ WEIGHT MANAGEMENT ============
 
 /**
@@ -1324,6 +1369,56 @@ export const getProjectWithToolsAndSkills = action({
       project,
       tools: activeTools,
       skills: activeSkills,
+    };
+  },
+});
+
+/**
+ * Get detailed information about a node including its edges and neighbors.
+ * Public query for dashboard access.
+ *
+ * @param nodeId - Node ID to get details for
+ * @returns Node with outgoing/incoming edges and neighbor nodes, or null if not found
+ */
+export const getNodeDetails = query({
+  args: {
+    nodeId: v.id("graphNodes"),
+  },
+  handler: async (ctx, args): Promise<{
+    node: Doc<"graphNodes">;
+    outgoingEdges: Array<Doc<"graphEdges">>;
+    incomingEdges: Array<Doc<"graphEdges">>;
+    neighbors: Array<Doc<"graphNodes">>;
+  } | null> => {
+    const node = await ctx.db.get(args.nodeId);
+    if (!node) return null;
+
+    const outgoingEdges = await ctx.db
+      .query("graphEdges")
+      .withIndex("by_from", (q) => q.eq("fromNode", args.nodeId))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .collect();
+
+    const incomingEdges = await ctx.db
+      .query("graphEdges")
+      .withIndex("by_to", (q) => q.eq("toNode", args.nodeId))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .collect();
+
+    const neighborIds = new Set([
+      ...outgoingEdges.map((e) => e.toNode),
+      ...incomingEdges.map((e) => e.fromNode),
+    ]);
+
+    const neighbors = await Promise.all(
+      Array.from(neighborIds).map((id) => ctx.db.get(id))
+    );
+
+    return {
+      node,
+      outgoingEdges,
+      incomingEdges,
+      neighbors: neighbors.filter((n) => n !== null && n.status === "active") as Array<Doc<"graphNodes">>,
     };
   },
 });
