@@ -193,9 +193,21 @@ describe('HybridSearchInput', () => {
 
     const input = screen.getByPlaceholderText(/search memories/i);
 
-    // Type then clear manually
+    // Type first to trigger a non-initial state
     act(() => {
       fireEvent.change(input, { target: { value: 'test' } });
+    });
+
+    // Wait for debounce
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    // Clear the mock to focus on the next call
+    mockOnSearch.mockClear();
+
+    // Now clear the input
+    act(() => {
       fireEvent.change(input, { target: { value: '' } });
     });
 
@@ -226,11 +238,14 @@ describe('HybridSearchInput', () => {
   });
 
   it('focuses input when clicked', async () => {
+    const user = userEvent.setup();
+
     render(<HybridSearchInput onSearch={mockOnSearch} />);
 
     const input = screen.getByPlaceholderText(/search memories/i);
 
-    fireEvent.focus(input);
+    // Use userEvent to click which properly focuses
+    await user.click(input);
 
     expect(input).toHaveFocus();
   });

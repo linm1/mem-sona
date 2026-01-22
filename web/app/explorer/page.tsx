@@ -1,13 +1,13 @@
 'use client';
 
-import { useHybridSearch } from '@/hooks';
+import { useHybridSearch } from '@/app/hooks';
 import {
   HybridSearchInput,
   MemoryList,
   LoadingState,
   ErrorState,
   EmptyState,
-} from '@/components/search';
+} from '@/app/components/search';
 
 /**
  * Memory Explorer Page

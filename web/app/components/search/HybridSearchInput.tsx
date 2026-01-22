@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useDebouncedValue } from '@/app/hooks/useDebouncedValue';
 
 /**
  * Props for HybridSearchInput component
