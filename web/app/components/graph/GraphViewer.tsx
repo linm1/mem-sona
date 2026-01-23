@@ -58,6 +58,13 @@ export function GraphViewer({
 
     cyRef.current = cy;
 
+    // Force resize after a brief delay to ensure container has dimensions
+    // This fixes the zero-height issue when Cytoscape initializes before CSS is applied
+    requestAnimationFrame(() => {
+      cy.resize();
+      cy.fit(undefined, 50);
+    });
+
     // Node hover - show tooltip
     cy.on('mouseover', 'node', (event) => {
       const node = event.target;
@@ -163,7 +170,7 @@ export function GraphViewer({
       <div
         data-testid="graph-container"
         ref={containerRef}
-        className="w-full h-full"
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}
       />
 
       {/* Node tooltip */}

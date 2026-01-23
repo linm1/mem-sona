@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useHybridSearch } from '@/app/hooks';
 import {
   HybridSearchInput,
@@ -22,9 +23,9 @@ import {
 export default function MemoryExplorerPage() {
   const { results, isLoading, error, executionTime, search } = useHybridSearch();
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = useCallback(async (query: string) => {
     await search(query, 2000);
-  };
+  }, [search]);
 
   const handleRetry = async () => {
     // Retry last search (would need to track last query)

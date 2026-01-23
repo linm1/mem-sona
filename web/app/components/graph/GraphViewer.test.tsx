@@ -8,6 +8,7 @@ vi.mock('cytoscape', () => ({
     on: vi.fn(),
     off: vi.fn(),
     fit: vi.fn(),
+    resize: vi.fn(),
     zoom: vi.fn(() => 1),
     pan: vi.fn(() => ({ x: 0, y: 0 })),
     center: vi.fn(),

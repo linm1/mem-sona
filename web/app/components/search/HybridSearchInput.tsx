@@ -34,6 +34,9 @@ export function HybridSearchInput({
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, debounceMs);
   const isInitialMount = useRef(true);
+  // Store callback in ref to avoid stale closure issues
+  const onSearchRef = useRef(onSearch);
+  onSearchRef.current = onSearch;
 
   // Trigger search when debounced query changes (skip initial mount)
   useEffect(() => {
@@ -41,8 +44,8 @@ export function HybridSearchInput({
       isInitialMount.current = false;
       return;
     }
-    onSearch(debouncedQuery);
-  }, [debouncedQuery, onSearch]);
+    onSearchRef.current(debouncedQuery);
+  }, [debouncedQuery]);
 
   const handleClear = () => {
     setQuery('');
