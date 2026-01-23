@@ -68,7 +68,7 @@ describe('listActiveNodes', () => {
     // Import the function (we'll implement this after tests)
     const { listActiveNodes } = await import('./graph');
 
-    const result = await listActiveNodes(mockCtx as any, {});
+    const result = await (listActiveNodes as any)(mockCtx as any, {});
 
     expect(result).toHaveLength(3);
     expect(result[0].name).toBe('Project A');
@@ -88,10 +88,10 @@ describe('listActiveNodes', () => {
 
     const { listActiveNodes } = await import('./graph');
 
-    const result = await listActiveNodes(mockCtx as any, { type: 'project' });
+    const result = await (listActiveNodes as any)(mockCtx as any, { type: 'project' });
 
     expect(result).toHaveLength(2);
-    expect(result.every(n => n.type === 'project')).toBe(true);
+    expect(result.every((n: any) => n.type === 'project')).toBe(true);
     expect(mockWithIndex).toHaveBeenCalledWith('by_type', expect.any(Function));
   });
 
@@ -106,7 +106,7 @@ describe('listActiveNodes', () => {
 
     const { listActiveNodes } = await import('./graph');
 
-    const result = await listActiveNodes(mockCtx as any, { type: 'project' });
+    const result = await (listActiveNodes as any)(mockCtx as any, { type: 'project' });
 
     expect(result).toHaveLength(1);
     expect(result[0].status).toBe('active');
@@ -119,7 +119,7 @@ describe('listActiveNodes', () => {
 
     const { listActiveNodes } = await import('./graph');
 
-    const result = await listActiveNodes(mockCtx as any, {});
+    const result = await (listActiveNodes as any)(mockCtx as any, {});
 
     expect(result).toEqual([]);
   });
@@ -150,7 +150,7 @@ describe('listActiveEdgesPublic', () => {
 
     const { listActiveEdgesPublic } = await import('./graph');
 
-    const result = await listActiveEdgesPublic(mockCtx as any, {});
+    const result = await (listActiveEdgesPublic as any)(mockCtx as any, {});
 
     expect(result).toHaveLength(3);
     expect(mockWithIndex).toHaveBeenCalledWith('by_status', expect.any(Function));
@@ -172,10 +172,10 @@ describe('listActiveEdgesPublic', () => {
 
     const { listActiveEdgesPublic } = await import('./graph');
 
-    const result = await listActiveEdgesPublic(mockCtx as any, { relationship: 'uses' });
+    const result = await (listActiveEdgesPublic as any)(mockCtx as any, { relationship: 'uses' });
 
     expect(result).toHaveLength(2);
-    expect(result.every(e => e.relationship === 'uses')).toBe(true);
+    expect(result.every((e: any) => e.relationship === 'uses')).toBe(true);
   });
 
   it('excludes archived and superseded edges', async () => {
@@ -189,7 +189,7 @@ describe('listActiveEdgesPublic', () => {
 
     const { listActiveEdgesPublic } = await import('./graph');
 
-    const result = await listActiveEdgesPublic(mockCtx as any, {});
+    const result = await (listActiveEdgesPublic as any)(mockCtx as any, {});
 
     expect(result).toHaveLength(1);
     expect(result[0].status).toBe('active');
@@ -202,7 +202,7 @@ describe('listActiveEdgesPublic', () => {
 
     const { listActiveEdgesPublic } = await import('./graph');
 
-    const result = await listActiveEdgesPublic(mockCtx as any, {});
+    const result = await (listActiveEdgesPublic as any)(mockCtx as any, {});
 
     expect(result).toEqual([]);
   });
@@ -253,7 +253,7 @@ describe('getNodeDetails', () => {
 
     const { getNodeDetails } = await import('./graph');
 
-    const result = await getNodeDetails(mockCtx as any, { nodeId });
+    const result = await (getNodeDetails as any)(mockCtx as any, { nodeId });
 
     expect(result).toBeDefined();
     expect(result?.node).toEqual(node);
@@ -268,7 +268,7 @@ describe('getNodeDetails', () => {
 
     const { getNodeDetails } = await import('./graph');
 
-    const result = await getNodeDetails(mockCtx as any, { nodeId });
+    const result = await (getNodeDetails as any)(mockCtx as any, { nodeId });
 
     expect(result).toBeNull();
   });
@@ -297,7 +297,7 @@ describe('getNodeDetails', () => {
 
     const { getNodeDetails } = await import('./graph');
 
-    const result = await getNodeDetails(mockCtx as any, { nodeId });
+    const result = await (getNodeDetails as any)(mockCtx as any, { nodeId });
 
     expect(result?.neighbors).toHaveLength(1);
     expect(result?.neighbors[0].status).toBe('active');
@@ -315,7 +315,7 @@ describe('getNodeDetails', () => {
 
     const { getNodeDetails } = await import('./graph');
 
-    const result = await getNodeDetails(mockCtx as any, { nodeId });
+    const result = await (getNodeDetails as any)(mockCtx as any, { nodeId });
 
     expect(result?.node).toEqual(node);
     expect(result?.outgoingEdges).toHaveLength(0);

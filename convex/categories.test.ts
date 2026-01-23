@@ -70,23 +70,23 @@ describe('list', () => {
 
     const { list } = await import('./categories');
 
-    const result = await list(mockCtx as any, {});
+    const result = await (list as any)(mockCtx as any, {});
 
     expect(result).toHaveLength(3);
 
     // Check tech_preferences
-    const techPrefs = result.find(c => c.name === 'tech_preferences');
+    const techPrefs = result.find((c: any) => c.name === 'tech_preferences');
     expect(techPrefs).toBeDefined();
     expect(techPrefs?.itemCount).toBe(2);
     expect(techPrefs?.summary).toBe('Tech prefs');
 
     // Check projects
-    const projects = result.find(c => c.name === 'projects');
+    const projects = result.find((c: any) => c.name === 'projects');
     expect(projects).toBeDefined();
     expect(projects?.itemCount).toBe(3);
 
     // Check work_context (no items)
-    const workContext = result.find(c => c.name === 'work_context');
+    const workContext = result.find((c: any) => c.name === 'work_context');
     expect(workContext).toBeDefined();
     expect(workContext?.itemCount).toBe(0);
   });
@@ -100,7 +100,7 @@ describe('list', () => {
 
     const { list } = await import('./categories');
 
-    const result = await list(mockCtx as any, {});
+    const result = await (list as any)(mockCtx as any, {});
 
     expect(result).toEqual([]);
   });
@@ -118,7 +118,7 @@ describe('list', () => {
 
     const { list } = await import('./categories');
 
-    const result = await list(mockCtx as any, {});
+    const result = await (list as any)(mockCtx as any, {});
 
     expect(result).toHaveLength(1);
     expect(result[0].itemCount).toBe(0);
@@ -142,7 +142,7 @@ describe('list', () => {
 
     const { list } = await import('./categories');
 
-    const result = await list(mockCtx as any, {});
+    const result = await (list as any)(mockCtx as any, {});
 
     expect(result[0]).toHaveProperty('_id');
     expect(result[0]).toHaveProperty('name', 'test_category');
@@ -177,11 +177,11 @@ describe('list', () => {
 
     const { list } = await import('./categories');
 
-    const result = await list(mockCtx as any, {});
+    const result = await (list as any)(mockCtx as any, {});
 
-    const cat1 = result.find(c => c.name === 'cat1');
-    const cat2 = result.find(c => c.name === 'cat2');
-    const cat3 = result.find(c => c.name === 'cat3');
+    const cat1 = result.find((c: any) => c.name === 'cat1');
+    const cat2 = result.find((c: any) => c.name === 'cat2');
+    const cat3 = result.find((c: any) => c.name === 'cat3');
 
     expect(cat1?.itemCount).toBe(3);
     expect(cat2?.itemCount).toBe(1);
@@ -206,7 +206,7 @@ describe('list', () => {
 
     const { list } = await import('./categories');
 
-    const result = await list(mockCtx as any, {});
+    const result = await (list as any)(mockCtx as any, {});
 
     // Should only return existing categories
     expect(result).toHaveLength(1);
