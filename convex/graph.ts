@@ -454,9 +454,10 @@ export const listActiveNodes = query({
   args: { type: v.optional(v.string()) },
   handler: async (ctx, args): Promise<Array<Doc<"graphNodes">>> => {
     if (args.type) {
+      const nodeType = args.type;
       return await ctx.db
         .query("graphNodes")
-        .withIndex("by_type", (q) => q.eq("type", args.type))
+        .withIndex("by_type", (q) => q.eq("type", nodeType))
         .filter((q) => q.eq(q.field("status"), "active"))
         .collect();
     }
