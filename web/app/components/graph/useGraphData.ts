@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from 'convex/react';
+import { useMemo, useRef } from 'react';
 import { api } from '../../../../convex/_generated/api';
 import { transformGraphData } from './transformers';
 import type {
@@ -12,8 +13,35 @@ import type {
 } from './types';
 
 /**
+ * Deep comparison for element arrays.
+ * Compares element IDs and key properties to detect actual changes.
+ */
+function areElementsEqual(
+  prev: CytoscapeElement[],
+  next: CytoscapeElement[]
+): boolean {
+  if (prev.length !== next.length) return false;
+
+  // Create a map of prev elements by ID for O(1) lookup
+  const prevMap = new Map(prev.map((el) => [el.data.id, el]));
+
+  for (const nextEl of next) {
+    const prevEl = prevMap.get(nextEl.data.id);
+    if (!prevEl) return false;
+
+    // Compare key properties (shallow comparison is sufficient for our use case)
+    if (JSON.stringify(prevEl.data) !== JSON.stringify(nextEl.data)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Custom hook for fetching and transforming graph data for Cytoscape.
  * Uses Convex reactive queries for real-time updates.
+ * Memoizes elements with stable reference to prevent unnecessary re-renders.
  *
  * @param options - Optional filters for node type and relationship
  * @returns Graph data including elements, loading state, and counts
@@ -32,10 +60,27 @@ export function useGraphData(
   // Loading state - either query still loading
   const isLoading = nodes === undefined || edges === undefined;
 
-  // Transform data when available
-  const elements: CytoscapeElement[] = !isLoading
-    ? transformGraphData(nodes as GraphNode[], edges as GraphEdge[])
-    : [];
+  // Ref to store previous elements for comparison
+  const prevElementsRef = useRef<CytoscapeElement[]>([]);
+
+  // Transform data when available with stable memoization
+  const elements = useMemo(() => {
+    if (isLoading) return [];
+
+    const newElements = transformGraphData(
+      nodes as GraphNode[],
+      edges as GraphEdge[]
+    );
+
+    // Return previous reference if elements haven't actually changed
+    // This prevents unnecessary Cytoscape updates
+    if (areElementsEqual(prevElementsRef.current, newElements)) {
+      return prevElementsRef.current;
+    }
+
+    prevElementsRef.current = newElements;
+    return newElements;
+  }, [nodes, edges, isLoading]);
 
   // Empty state - no nodes in graph
   const isEmpty = !isLoading && (nodes as GraphNode[]).length === 0;

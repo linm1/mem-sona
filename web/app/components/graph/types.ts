@@ -141,3 +141,28 @@ export interface EdgeStyleConfig {
   color: string;
   opacity: number;
 }
+
+/**
+ * Connected edge information for node info panel.
+ */
+export interface ConnectedEdge {
+  id: string;
+  relationship: string;
+  targetId: string;
+  targetLabel: string;
+  targetType: NodeType;
+  weight: number;
+  status: EdgeStatus;
+  direction: 'outgoing' | 'incoming';
+}
+
+/**
+ * Selected node data with connected edges for info panel.
+ */
+export interface SelectedNodeData {
+  id: string;
+  label: string;
+  type: NodeType;
+  description?: string;
+  edges: ConnectedEdge[];
+}
