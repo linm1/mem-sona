@@ -91,6 +91,8 @@ export type MergedResult = {
   timestamp: number;
   /** Which search contributed this result: vector-only, graph-only, or both */
   source: "vector" | "graph" | "hybrid";
+  /** Node ID for graph nodes (used for graph visualization filtering) */
+  nodeId?: string;
 };
 
 /**
@@ -104,6 +106,7 @@ const mergedResultValidator = v.object({
   finalScore: v.number(),
   timestamp: v.number(),
   source: v.union(v.literal("vector"), v.literal("graph"), v.literal("hybrid")),
+  nodeId: v.optional(v.string()),
 });
 
 /**
@@ -212,6 +215,8 @@ export type RRFFusedResult = {
   timestamp: number;
   /** Which search contributed this result: vector-only, graph-only, or both */
   sources: Array<"vector" | "graph">;
+  /** Node ID for graph nodes (used for graph visualization filtering) */
+  nodeId?: string;
 };
 
 /**
@@ -225,6 +230,7 @@ const rrfFusedResultValidator = v.object({
   finalScore: v.number(),
   timestamp: v.number(),
   sources: v.array(v.union(v.literal("vector"), v.literal("graph"))),
+  nodeId: v.optional(v.string()),
 });
 
 /**
@@ -307,6 +313,7 @@ export function weightedTimeDecayRRF(
     timestamp: number;
     content: string;
     sources: Set<"vector" | "graph">;
+    nodeId?: string;
   }>();
 
   // Process vector results (must be sorted by rawScore, descending)
@@ -347,6 +354,10 @@ export function weightedTimeDecayRRF(
       existing.sources.add("graph");
       // Keep earliest timestamp for time-decay
       existing.timestamp = Math.min(existing.timestamp, item.timestamp);
+      // Preserve nodeId if this is a graph result
+      if (!existing.nodeId) {
+        existing.nodeId = item.nodeId;
+      }
     } else {
       // New content from graph search
       fused.set(key, {
@@ -355,6 +366,7 @@ export function weightedTimeDecayRRF(
         timestamp: item.timestamp,
         content: item.context,
         sources: new Set<"vector" | "graph">(["graph"]),
+        nodeId: item.nodeId,
       });
     }
   });
@@ -371,6 +383,7 @@ export function weightedTimeDecayRRF(
       finalScore: item.rrfScore * decayFactor,
       timestamp: item.timestamp,
       sources: Array.from(item.sources),
+      nodeId: item.nodeId,
     };
   });
 
@@ -1005,6 +1018,7 @@ export const hybridSearch = action({
         finalScore: r.finalScore, // RRF score * time-decay
         timestamp: r.timestamp,
         source,
+        nodeId: r.nodeId, // Preserve nodeId for graph visualization
       };
     });
 

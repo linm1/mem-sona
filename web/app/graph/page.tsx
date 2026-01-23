@@ -1,5 +1,7 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
+import { useMemo } from 'react';
 import { DashboardLayout } from '../components/layout';
 import { GraphViewer } from '../components/graph';
 
@@ -7,14 +9,24 @@ import { GraphViewer } from '../components/graph';
  * Knowledge Graph Visualization Page.
  * Displays interactive graph of user's knowledge network.
  * Route: /graph
+ *
+ * Supports URL parameter filtering:
+ * - /graph?filter=node1,node2,node3 - Shows only specified nodes and their edges
  */
 export default function GraphPage() {
+  const searchParams = useSearchParams();
+
+  // Parse filtered nodes from URL: /graph?filter=node1,node2,node3
+  const filteredNodeIds = useMemo(() => {
+    const filter = searchParams.get('filter');
+    return filter ? filter.split(',').filter(Boolean) : undefined;
+  }, [searchParams]);
+
   /**
    * Handle node click - can be extended to show node details panel.
    */
-  const handleNodeClick = (nodeId: string) => {
+  const handleNodeClick = (_nodeId: string) => {
     // Future enhancement: Open node details panel or navigate to node page
-    console.log('Node clicked:', nodeId);
   };
 
   return (
@@ -26,14 +38,27 @@ export default function GraphPage() {
             Knowledge Graph
           </h1>
           <p className="text-sm text-muted">
-            Explore relationships between your projects, tools, skills, and
-            concepts. Pan, zoom, and click nodes to interact with the graph.
+            {filteredNodeIds?.length
+              ? `Showing ${filteredNodeIds.length} nodes from search results.`
+              : 'Explore relationships between your projects, tools, skills, and concepts. Pan, zoom, and click nodes to interact with the graph.'}
           </p>
+          {filteredNodeIds?.length ? (
+            <a
+              href="/graph"
+              className="text-sm text-accent hover:underline mt-2 inline-block"
+            >
+              Clear filter and show all nodes
+            </a>
+          ) : null}
         </div>
 
         {/* Graph Viewer */}
         <div className="bg-paper border-2 border-ink">
-          <GraphViewer className="h-[600px]" onNodeClick={handleNodeClick} />
+          <GraphViewer
+            className="h-[600px]"
+            onNodeClick={handleNodeClick}
+            filteredNodeIds={filteredNodeIds}
+          />
         </div>
 
         {/* Legend */}

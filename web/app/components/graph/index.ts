@@ -25,6 +25,11 @@ export {
   COLORS,
 } from './graphStyles';
 export { getCoseLayoutOptions, getLayoutForNodeCount } from './graphLayout';
+export {
+  applySearchFilter,
+  clearSearchFilter,
+  getFilteredElements,
+} from './searchFilter';
 
 // Types
 export type {

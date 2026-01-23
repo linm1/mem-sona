@@ -106,9 +106,10 @@ export function generateCytoscapeStylesheet(): CytoscapeStyleDefinition[] {
       style: {
         'background-color': COLORS.ink,
         label: 'data(label)',
-        color: COLORS.paper,
-        'text-valign': 'center',
+        color: COLORS.ink,
+        'text-valign': 'bottom',
         'text-halign': 'center',
+        'text-margin-y': 8,
         'font-size': '10px',
         'font-family': 'Space Mono, monospace',
         'text-transform': 'uppercase',

@@ -291,4 +291,24 @@ describe('graphStyles', () => {
       expect(archivedStyle?.style?.['line-style']).toBe('dashed');
     });
   });
+
+  describe('node label styling', () => {
+    it('has dark ink color for readability', () => {
+      const stylesheet = generateCytoscapeStylesheet();
+      const nodeStyle = stylesheet.find((s) => s.selector === 'node');
+      expect(nodeStyle?.style?.color).toBe(COLORS.ink);
+    });
+
+    it('positions label below the node', () => {
+      const stylesheet = generateCytoscapeStylesheet();
+      const nodeStyle = stylesheet.find((s) => s.selector === 'node');
+      expect(nodeStyle?.style?.['text-valign']).toBe('bottom');
+    });
+
+    it('has vertical margin between node and label', () => {
+      const stylesheet = generateCytoscapeStylesheet();
+      const nodeStyle = stylesheet.find((s) => s.selector === 'node');
+      expect(nodeStyle?.style?.['text-margin-y']).toBeGreaterThan(0);
+    });
+  });
 });

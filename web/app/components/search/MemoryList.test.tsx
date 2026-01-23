@@ -194,4 +194,81 @@ describe('MemoryList', () => {
 
     expect(screen.getByText(/250ms/i)).toBeInTheDocument();
   });
+
+  describe('View in Graph button', () => {
+    const resultsWithNodeIds: MergedResult[] = [
+      {
+        type: 'node',
+        content: 'project: mem-sona',
+        score: 0.95,
+        finalScore: 0.9,
+        timestamp: Date.now(),
+        source: 'graph',
+        nodeId: 'node123',
+      },
+      {
+        type: 'node',
+        content: 'tool: Convex',
+        score: 0.85,
+        finalScore: 0.8,
+        timestamp: Date.now(),
+        source: 'graph',
+        nodeId: 'node456',
+      },
+      {
+        type: 'item',
+        content: 'Some item without nodeId',
+        score: 0.75,
+        finalScore: 0.7,
+        timestamp: Date.now(),
+        source: 'vector',
+      },
+    ];
+
+    it('shows View in Graph button when results contain nodes', () => {
+      render(<MemoryList results={resultsWithNodeIds} />);
+
+      expect(screen.getByRole('link', { name: /view in graph/i })).toBeInTheDocument();
+    });
+
+    it('does not show View in Graph button when no node results', () => {
+      const itemOnlyResults: MergedResult[] = [
+        {
+          type: 'item',
+          content: 'Some item',
+          score: 0.9,
+          finalScore: 0.85,
+          timestamp: Date.now(),
+          source: 'vector',
+        },
+      ];
+
+      render(<MemoryList results={itemOnlyResults} />);
+
+      expect(screen.queryByRole('link', { name: /view in graph/i })).not.toBeInTheDocument();
+    });
+
+    it('generates correct graph URL with node IDs', () => {
+      render(<MemoryList results={resultsWithNodeIds} />);
+
+      const link = screen.getByRole('link', { name: /view in graph/i });
+      expect(link).toHaveAttribute('href', '/graph?filter=node123,node456');
+    });
+
+    it('only includes node IDs in graph URL (not items)', () => {
+      render(<MemoryList results={resultsWithNodeIds} />);
+
+      const link = screen.getByRole('link', { name: /view in graph/i });
+      const href = link.getAttribute('href');
+
+      // Should only have 2 node IDs
+      expect(href).toBe('/graph?filter=node123,node456');
+    });
+
+    it('shows count of nodes that will be shown in graph', () => {
+      render(<MemoryList results={resultsWithNodeIds} />);
+
+      expect(screen.getByText(/2 nodes/i)).toBeInTheDocument();
+    });
+  });
 });

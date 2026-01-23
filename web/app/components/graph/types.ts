@@ -92,6 +92,8 @@ export interface GraphViewerProps {
   nodeTypeFilter?: NodeType;
   /** Optional filter by relationship */
   relationshipFilter?: string;
+  /** Node IDs to filter to (shows only these nodes + their edges) */
+  filteredNodeIds?: string[];
 }
 
 /**

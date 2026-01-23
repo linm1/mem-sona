@@ -10,6 +10,8 @@ export type MergedResult = {
   finalScore: number;
   timestamp: number;
   source: "vector" | "graph" | "hybrid";
+  /** Node ID for graph nodes (used for graph visualization filtering) */
+  nodeId?: string;
 };
 
 export type HybridSearchResult = {

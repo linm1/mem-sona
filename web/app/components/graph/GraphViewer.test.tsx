@@ -14,8 +14,30 @@ vi.mock('cytoscape', () => ({
     center: vi.fn(),
     layout: vi.fn(() => ({ run: vi.fn() })),
     destroy: vi.fn(),
-    nodes: vi.fn(() => ({ length: 0 })),
-    edges: vi.fn(() => ({ length: 0 })),
+    nodes: vi.fn(() => ({
+      length: 0,
+      removeClass: vi.fn(),
+      style: vi.fn(),
+    })),
+    edges: vi.fn(() => ({
+      length: 0,
+      forEach: vi.fn(),
+    })),
+    elements: vi.fn(() => ({
+      map: vi.fn(() => []),
+      forEach: vi.fn(),
+      removeClass: vi.fn(),
+      addClass: vi.fn(),
+      style: vi.fn(),
+    })),
+    batch: vi.fn((fn: () => void) => fn()),
+    add: vi.fn(),
+    getElementById: vi.fn(() => ({
+      length: 0,
+      removeClass: vi.fn(),
+      addClass: vi.fn(),
+      style: vi.fn(),
+    })),
   })),
 }));
 
@@ -210,5 +232,38 @@ describe('GraphViewer', () => {
 
     render(<GraphViewer />);
     expect(screen.getByText(/1 edge/i)).toBeInTheDocument();
+  });
+
+  describe('filtered nodes', () => {
+    beforeEach(() => {
+      vi.mocked(useGraphData).mockReturnValue({
+        elements: mockElements,
+        isLoading: false,
+        isEmpty: false,
+        nodeCount: 5,
+        edgeCount: 3,
+        error: null,
+      });
+    });
+
+    it('accepts filteredNodeIds prop without error', () => {
+      render(<GraphViewer filteredNodeIds={['n1', 'n2']} />);
+      expect(screen.getByTestId('graph-viewer')).toBeInTheDocument();
+    });
+
+    it('accepts empty filteredNodeIds array', () => {
+      render(<GraphViewer filteredNodeIds={[]} />);
+      expect(screen.getByTestId('graph-viewer')).toBeInTheDocument();
+    });
+
+    it('accepts undefined filteredNodeIds', () => {
+      render(<GraphViewer />);
+      expect(screen.getByTestId('graph-viewer')).toBeInTheDocument();
+    });
+
+    it('shows filter indicator when nodes are filtered', () => {
+      render(<GraphViewer filteredNodeIds={['n1', 'n2']} />);
+      expect(screen.getByText(/2 filtered/i)).toBeInTheDocument();
+    });
   });
 });

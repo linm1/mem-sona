@@ -10,6 +10,7 @@ import { NodeTooltip } from './NodeTooltip';
 import { NodeInfoPanel } from './NodeInfoPanel';
 import { GraphLoadingState, GraphEmptyState, GraphErrorState } from './GraphStates';
 import { applyDepthFilter, clearDepthFilter } from './depthFilter';
+import { applySearchFilter } from './searchFilter';
 import type {
   GraphViewerProps,
   TooltipNodeData,
@@ -36,6 +37,7 @@ export function GraphViewer({
   onNodeClick,
   nodeTypeFilter,
   relationshipFilter,
+  filteredNodeIds,
 }: GraphViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -311,6 +313,13 @@ export function GraphViewer({
     // Note: We do NOT run layout here to preserve node positions
   }, [elements]);
 
+  // Apply search filter when filteredNodeIds changes
+  useEffect(() => {
+    if (!cyRef.current || !isInitializedRef.current) return;
+
+    applySearchFilter(cyRef.current, filteredNodeIds ?? null);
+  }, [filteredNodeIds]);
+
   // Control handlers
   const handleZoomIn = useCallback(() => {
     if (cyRef.current) {
@@ -374,6 +383,11 @@ export function GraphViewer({
         {depthLevel && selectedNode && (
           <span className="px-2 py-1 text-xs font-mono uppercase bg-accent text-paper border border-ink">
             {depthLevel}-HOP FROM {selectedNode.label.toUpperCase()}
+          </span>
+        )}
+        {filteredNodeIds && filteredNodeIds.length > 0 && (
+          <span className="px-2 py-1 text-xs font-mono uppercase bg-accent text-paper border border-ink">
+            {filteredNodeIds.length} FILTERED
           </span>
         )}
       </div>
