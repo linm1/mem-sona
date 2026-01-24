@@ -341,3 +341,263 @@ describe('backward compatibility', () => {
     expect(merged[0].nodeId).toBe('n1');
   });
 });
+
+// ============================================================================
+// 4-WAY HYBRID SEARCH INTEGRATION TESTS
+// ============================================================================
+
+describe('hybridSearch4WayHandler integration', () => {
+  describe('full pipeline execution', () => {
+    it('should execute the complete 4-way hybrid search pipeline', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+
+      // Simulate 4 search result sets
+      const vectorItems = [
+        createMockItem({ _id: 'i1' as Id<'items'>, content: 'Vector matched item', createdAt: now }),
+        createMockItem({ _id: 'i2' as Id<'items'>, content: 'Shared item content', createdAt: now }),
+      ];
+
+      const textItems = [
+        createMockItem({ _id: 'i2' as Id<'items'>, content: 'Shared item content', createdAt: now }),
+        createMockItem({ _id: 'i3' as Id<'items'>, content: 'Text matched item', createdAt: now }),
+      ];
+
+      const vectorNodes = [
+        createMockNode({ _id: 'n1' as Id<'graphNodes'>, name: 'SharedNode', createdAt: now }),
+      ];
+
+      const textNodes = [
+        createMockNode({ _id: 'n1' as Id<'graphNodes'>, name: 'SharedNode', createdAt: now }),
+        createMockNode({ _id: 'n2' as Id<'graphNodes'>, name: 'TextOnlyNode', createdAt: now }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute(
+        vectorItems,
+        textItems,
+        vectorNodes,
+        textNodes,
+        10
+      );
+
+      // Should return results
+      expect(results.length).toBeGreaterThan(0);
+
+      // Should have both items and nodes
+      const hasItems = results.some(r => r.resultType === 'item');
+      const hasNodes = results.some(r => r.resultType === 'node');
+      expect(hasItems).toBe(true);
+      expect(hasNodes).toBe(true);
+
+      // Should have all source types
+      const sourceTypes = new Set(results.map(r => r.sourceType));
+      expect(sourceTypes.has('hybrid')).toBe(true); // Shared items/nodes
+      expect(sourceTypes.has('vector')).toBe(true); // Vector-only item
+      expect(sourceTypes.has('text')).toBe(true); // Text-only items
+    });
+
+    it('should correctly rank hybrid results above single-source results with same age', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+
+      // All created at same time to isolate RRF scoring
+      const vectorItems = [
+        createMockItem({ _id: 'i1' as Id<'items'>, content: 'Hybrid item', createdAt: now }),
+        createMockItem({ _id: 'i2' as Id<'items'>, content: 'Vector only item', createdAt: now }),
+      ];
+
+      const textItems = [
+        createMockItem({ _id: 'i1' as Id<'items'>, content: 'Hybrid item', createdAt: now }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute(
+        vectorItems,
+        textItems,
+        [],
+        [],
+        10
+      );
+
+      // Hybrid should rank higher due to accumulated RRF score
+      const hybridResult = results.find(r => r.content === 'Hybrid item');
+      const vectorOnlyResult = results.find(r => r.content === 'Vector only item');
+
+      expect(hybridResult).toBeDefined();
+      expect(vectorOnlyResult).toBeDefined();
+      expect(hybridResult!.finalScore).toBeGreaterThan(vectorOnlyResult!.finalScore);
+    });
+
+    it('should apply time decay correctly in the pipeline', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+      const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+      const vectorItems = [
+        createMockItem({ _id: 'i1' as Id<'items'>, content: 'Old item', createdAt: thirtyDaysAgo }),
+        createMockItem({ _id: 'i2' as Id<'items'>, content: 'Fresh item', createdAt: now }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute(
+        vectorItems,
+        [],
+        [],
+        [],
+        10
+      );
+
+      // Fresh item should rank higher due to time decay
+      const freshResult = results.find(r => r.content === 'Fresh item');
+      const oldResult = results.find(r => r.content === 'Old item');
+
+      expect(freshResult).toBeDefined();
+      expect(oldResult).toBeDefined();
+      expect(freshResult!.finalScore).toBeGreaterThan(oldResult!.finalScore);
+
+      // Old result should have ~0.5 decay factor (30-day half-life)
+      expect(oldResult!.decayFactor).toBeCloseTo(0.5, 1);
+    });
+
+    it('should respect topK limit', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+
+      // Create many items
+      const vectorItems = Array.from({ length: 20 }, (_, i) =>
+        createMockItem({ _id: `i${i}` as Id<'items'>, content: `Item ${i}`, createdAt: now })
+      );
+
+      const results = hybridSearch4WayHandler.execute(
+        vectorItems,
+        [],
+        [],
+        [],
+        5
+      );
+
+      expect(results.length).toBe(5);
+    });
+
+    it('should handle empty inputs gracefully', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const results = hybridSearch4WayHandler.execute(
+        [],
+        [],
+        [],
+        [],
+        10
+      );
+
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('FinalResult4Way to MergedResult mapping', () => {
+    it('should produce results compatible with MergedResult interface', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+
+      const vectorItems = [
+        createMockItem({ _id: 'i1' as Id<'items'>, content: 'Test content', createdAt: now }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute(vectorItems, [], [], [], 10);
+
+      // Verify FinalResult4Way has all fields needed for MergedResult mapping
+      const result = results[0];
+      expect(result).toHaveProperty('resultType'); // maps to MergedResult.type
+      expect(result).toHaveProperty('content');
+      expect(result).toHaveProperty('rrfScore'); // maps to MergedResult.score
+      expect(result).toHaveProperty('finalScore');
+      expect(result).toHaveProperty('createdAt'); // maps to MergedResult.timestamp
+      expect(result).toHaveProperty('sourceType'); // maps to MergedResult.source
+    });
+
+    it('should preserve nodeId for graph nodes', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+
+      const vectorNodes = [
+        createMockNode({ _id: 'n123' as Id<'graphNodes'>, name: 'TestNode', createdAt: now }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute([], [], vectorNodes, [], 10);
+
+      const nodeResult = results.find(r => r.resultType === 'node');
+      expect(nodeResult).toBeDefined();
+      expect(nodeResult!.nodeId).toBe('n123');
+    });
+  });
+
+  describe('source type labeling in pipeline', () => {
+    it('should label vector-only items as "vector"', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const vectorItems = [createMockItem({ _id: 'i1' as Id<'items'> })];
+
+      const results = hybridSearch4WayHandler.execute(vectorItems, [], [], [], 10);
+
+      expect(results[0].sourceType).toBe('vector');
+    });
+
+    it('should label text-only items as "text"', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const textItems = [createMockItem({ _id: 'i1' as Id<'items'> })];
+
+      const results = hybridSearch4WayHandler.execute([], textItems, [], [], 10);
+
+      expect(results[0].sourceType).toBe('text');
+    });
+
+    it('should label items in both vector and text as "hybrid"', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const sharedItem = createMockItem({ _id: 'i1' as Id<'items'>, content: 'Shared' });
+      const vectorItems = [sharedItem];
+      const textItems = [sharedItem];
+
+      const results = hybridSearch4WayHandler.execute(vectorItems, textItems, [], [], 10);
+
+      expect(results[0].sourceType).toBe('hybrid');
+    });
+
+    it('should label vector-only nodes as "vector"', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const vectorNodes = [createMockNode({ _id: 'n1' as Id<'graphNodes'> })];
+
+      const results = hybridSearch4WayHandler.execute([], [], vectorNodes, [], 10);
+
+      expect(results[0].sourceType).toBe('vector');
+    });
+
+    it('should label text-only nodes as "text"', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const textNodes = [createMockNode({ _id: 'n1' as Id<'graphNodes'> })];
+
+      const results = hybridSearch4WayHandler.execute([], [], [], textNodes, 10);
+
+      expect(results[0].sourceType).toBe('text');
+    });
+
+    it('should label nodes in both vector and text as "hybrid"', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const sharedNode = createMockNode({ _id: 'n1' as Id<'graphNodes'>, name: 'SharedNode' });
+      const vectorNodes = [sharedNode];
+      const textNodes = [sharedNode];
+
+      const results = hybridSearch4WayHandler.execute([], [], vectorNodes, textNodes, 10);
+
+      expect(results[0].sourceType).toBe('hybrid');
+    });
+  });
+});

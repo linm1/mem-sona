@@ -4,7 +4,7 @@
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalAction, action } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internal, api } from "./_generated/api";
 import { SEARCH_CONFIG, RRF_CONFIG } from "./utils/constants";
 import { djb2Hash } from "./utils/hybridSearch";
 
@@ -260,22 +260,16 @@ export function calculateTimeDecay(timestamp: number): number {
  * This prevents showing the same information twice when an entity appears in both
  * the file-based layer (as an item) and the graph layer (as a node).
  *
- * NOTE: This is a simple string hash implementation that works in Convex runtime.
- * For production use in Node.js actions, use crypto.createHash("sha256") instead.
+ * NOTE: Delegates to djb2Hash from utils/hybridSearch.ts for consistency.
+ * The format differs slightly (no padding) but hash values are consistent.
  *
+ * @deprecated Use djb2Hash from utils/hybridSearch.ts directly
  * @param content - Text content to hash
  * @returns Deterministic hash string
  */
 export function hashContent(content: string): string {
-  // Simple hash function compatible with Convex runtime (no Node.js APIs)
-  // This uses a DJB2 hash algorithm - fast and good distribution
-  let hash = 5381;
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i);
-    hash = ((hash << 5) + hash) + char; // hash * 33 + char
-  }
-  // Convert to unsigned 32-bit hex string
-  return (hash >>> 0).toString(16).padStart(8, '0');
+  // Delegate to the canonical implementation in utils/hybridSearch.ts
+  return djb2Hash(content);
 }
 
 // ============ RRF FUSION ALGORITHM ============
@@ -779,6 +773,91 @@ export const graphSearchPipelineRRF = internalAction({
   },
 });
 
+// ============ VECTOR SEARCH (RAW DOCS FOR 4-WAY HYBRID) ============
+
+/**
+ * Vector search pipeline returning raw item documents.
+ * Used by the 4-way hybrid search to get items for RRF merging.
+ *
+ * This returns raw Doc<"items">[] instead of RRFVectorInput[],
+ * allowing the 4-way handler to perform deduplication by content.
+ *
+ * @param embedding - Query embedding vector (1024 dimensions from voyage-4)
+ * @param limit - Maximum number of results to return (default: 20)
+ * @returns Array of item documents sorted by vector similarity (descending)
+ */
+export const vectorSearchItemsDocs = internalAction({
+  args: {
+    embedding: v.array(v.float64()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Doc<"items">[]> => {
+    const limit = args.limit ?? 20;
+
+    // Execute vector search on items table
+    const searchResults = await ctx.vectorSearch("items", "by_embedding", {
+      vector: args.embedding,
+      limit: limit,
+    });
+
+    // Load full item documents (sorted by vector similarity from search)
+    const itemIds = searchResults.map((result) => result._id);
+    const items: Doc<"items">[] = await ctx.runQuery(internal.items.fetchItemsByIds, {
+      itemIds,
+    });
+
+    // Preserve the order from vector search (sorted by similarity)
+    const itemMap = new Map(items.map((item) => [item._id, item]));
+    return itemIds.map((id) => itemMap.get(id)).filter((item): item is Doc<"items"> => item !== undefined);
+  },
+});
+
+/**
+ * Vector search pipeline returning raw graph node documents.
+ * Used by the 4-way hybrid search to get nodes for RRF merging.
+ *
+ * This returns raw Doc<"graphNodes">[] instead of RRFGraphInput[],
+ * allowing the 4-way handler to perform deduplication by node name.
+ *
+ * Only returns active nodes (status === "active").
+ *
+ * @param embedding - Query embedding vector (1024 dimensions from voyage-4)
+ * @param limit - Maximum number of results to return (default: 10)
+ * @returns Array of node documents sorted by vector similarity (descending)
+ */
+export const vectorSearchNodesDocs = internalAction({
+  args: {
+    embedding: v.array(v.float64()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Doc<"graphNodes">[]> => {
+    const limit = args.limit ?? 10;
+
+    // Execute vector search on graphNodes table
+    const searchResults = await ctx.vectorSearch("graphNodes", "by_embedding", {
+      vector: args.embedding,
+      limit: limit * 2, // Get extra results for filtering inactive nodes
+    });
+
+    // Load and filter for active nodes only
+    const results: Doc<"graphNodes">[] = [];
+
+    for (const searchResult of searchResults) {
+      if (results.length >= limit) break;
+
+      const node = await ctx.runQuery(internal.graph.getNodeInternal, {
+        nodeId: searchResult._id,
+      });
+
+      if (node && node.status === "active") {
+        results.push(node);
+      }
+    }
+
+    return results;
+  },
+});
+
 // ============ RESULT MERGING AND RANKING ============
 
 /**
@@ -930,25 +1009,25 @@ export const assembleContextWindow = internalAction({
 
 /**
  * Main hybrid search action (PUBLIC - called by MCP server).
- * Orchestrates parallel vector + graph search, merges results using RRF, and assembles context.
+ * Orchestrates 4-way parallel search, merges results using RRF, and assembles context.
  *
  * This is the PRIMARY entry point for the `memory_search` MCP tool.
- * It combines the power of semantic search (vector) with relationship traversal (graph)
- * to provide the most relevant memory results for any query.
+ * It combines the power of semantic search (vector) with keyword search (text)
+ * across both the file-based layer (items) and graph layer (nodes).
  *
- * Execution flow (Sprint-004 RRF Update):
+ * Execution flow (4-Way Hybrid Search):
  * 1. Generate query embedding (voyage-4, inputType: "query")
- * 2. Parallel search: vectorSearchPipelineRRF + graphSearchPipelineRRF (raw scores)
- * 3. RRF fusion: weightedTimeDecayRRF() combines results with time-decay
- * 4. Map RRFFusedResult to MergedResult for backward compatibility
+ * 2. Parallel search: vectorItems + textItems + vectorNodes + textNodes (4 searches)
+ * 3. RRF fusion: hybridSearch4WayHandler merges with simple RRF (no weights)
+ * 4. Map FinalResult4Way to MergedResult for backward compatibility
  * 5. Assemble context: markdown formatting with token budget
  * 6. Return HybridSearchResult with execution time
  *
- * Key changes from legacy implementation:
- * - Uses RRF pipelines that return RAW scores (no time-decay applied)
- * - Uses weightedTimeDecayRRF() for fusion (replaces mergeAndRankResults)
- * - No threshold filtering - RRF returns Top-K directly (default: 20)
+ * Key features:
+ * - 4-way search: vector items, text items, vector nodes, text nodes
+ * - Simple RRF (no weights): 1/(k + rank) formula
  * - Time-decay applied AFTER fusion for cleaner scoring
+ * - Hybrid results (found by both vector and text) rank higher
  *
  * Performance target: < 500ms end-to-end
  *
@@ -981,43 +1060,59 @@ export const hybridSearch = action({
       inputType: "query", // Voyage AI optimization hint for search queries
     });
 
-    // Parallel search: RRF pipelines return RAW scores (no time-decay)
-    const [vectorResults, graphResults] = await Promise.all([
-      ctx.runAction(internal.retrieval.vectorSearchPipelineRRF, {
+    // 4-way parallel search: vector items, text items, vector nodes, text nodes
+    const [vectorItems, textItems, vectorNodes, textNodes] = await Promise.all([
+      // Vector search on items
+      ctx.runAction(internal.retrieval.vectorSearchItemsDocs, {
         embedding,
         limit: 20,
       }),
-      ctx.runAction(internal.retrieval.graphSearchPipelineRRF, {
+      // Text search on items (BM25-style keyword matching)
+      ctx.runQuery(api.textSearch.textSearchItems, {
+        query: args.query,
+        limit: 20,
+      }),
+      // Vector search on nodes
+      ctx.runAction(internal.retrieval.vectorSearchNodesDocs, {
         embedding,
+        limit: 10,
+      }),
+      // Text search on nodes (BM25-style keyword matching)
+      ctx.runQuery(api.textSearch.textSearchNodes, {
+        query: args.query,
         limit: 10,
       }),
     ]);
 
-    // RRF fusion with time-decay (replaces mergeAndRankResults + threshold filtering)
-    // Returns Top-K results directly - no additional filtering needed
-    const rrfResults: Array<RRFFusedResult> = weightedTimeDecayRRF(
-      vectorResults,
-      graphResults,
+    // 4-way RRF fusion with time-decay
+    // hybridSearch4WayHandler: merges items, merges nodes, combines, applies decay
+    const rrfResults: Array<FinalResult4Way> = hybridSearch4WayHandler.execute(
+      vectorItems,
+      textItems,
+      vectorNodes,
+      textNodes,
       RRF_CONFIG.DEFAULT_TOP_K
     );
 
-    // Map RRFFusedResult to MergedResult for backward compatibility with assembleContextWindow
+    // Map FinalResult4Way to MergedResult for backward compatibility
     // This preserves the existing context assembly logic and output format
-    const mergedResults: Array<MergedResult> = rrfResults.map((r: RRFFusedResult): MergedResult => {
-      // Determine source: "hybrid" if from both, otherwise first source
+    const mergedResults: Array<MergedResult> = rrfResults.map((r: FinalResult4Way): MergedResult => {
+      // Map sourceType to source field (backward compatibility)
+      // "text" maps to "vector" for backward compat (minor breaking change documented)
       let source: "vector" | "graph" | "hybrid";
-      if (r.sources.length > 1) {
+      if (r.sourceType === "hybrid") {
         source = "hybrid";
       } else {
-        source = r.sources[0] || "vector";
+        // Both "vector" and "text" map to "vector" for backward compat
+        source = "vector";
       }
 
       return {
-        type: r.type,
+        type: r.resultType,
         content: r.content,
         score: r.rrfScore, // Use RRF score as original score
         finalScore: r.finalScore, // RRF score * time-decay
-        timestamp: r.timestamp,
+        timestamp: r.createdAt,
         source,
         nodeId: r.nodeId, // Preserve nodeId for graph visualization
       };

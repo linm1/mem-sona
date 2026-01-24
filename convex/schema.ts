@@ -75,7 +75,7 @@ export default defineSchema({
       filterFields: ["type"],
     })
     // Text search index for BM25-style keyword matching (hybrid search)
-    .searchIndex("by_name", {
+    .searchIndex("by_name_search", {
       searchField: "name",
       filterFields: ["type", "status"],
     }),

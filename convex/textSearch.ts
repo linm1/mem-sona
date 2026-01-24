@@ -138,7 +138,7 @@ export async function textSearchNodesHandler(
 
   const results = await ctx.db
     .query("graphNodes")
-    .withSearchIndex("by_name", (q) => {
+    .withSearchIndex("by_name_search", (q) => {
       let searchQuery = q.search("name", sanitizedQuery);
 
       // Always filter for active nodes

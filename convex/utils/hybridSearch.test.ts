@@ -169,7 +169,9 @@ describe('simpleRRF', () => {
   it('should handle empty lists gracefully', async () => {
     const { simpleRRF } = await import('./hybridSearch');
 
-    const result = simpleRRF([], [], (item) => item._id);
+    const emptyItemsA: Doc<'items'>[] = [];
+    const emptyItemsB: Doc<'items'>[] = [];
+    const result = simpleRRF(emptyItemsA, emptyItemsB, (item) => item._id);
 
     expect(result).toEqual([]);
   });
@@ -347,13 +349,15 @@ describe('combineResults', () => {
   it('should add resultType field to distinguish items from nodes', async () => {
     const { combineResults } = await import('./hybridSearch');
 
-    const items = [{ _id: 'item1', rrfScore: 0.1, sourceType: 'vector' as const }];
-    const nodes = [{ _id: 'node1', rrfScore: 0.1, sourceType: 'vector' as const }];
+    const items = [{ _id: 'item1', doc: { _id: 'item1' }, rrfScore: 0.1, sourceType: 'vector' as const }];
+    const nodes = [{ _id: 'node1', doc: { _id: 'node1' }, rrfScore: 0.1, sourceType: 'vector' as const }];
 
     const result = combineResults(items as any, nodes as any);
 
-    expect(result.find(r => r._id === 'item1')?.resultType).toBe('item');
-    expect(result.find(r => r._id === 'node1')?.resultType).toBe('node');
+    const itemResult = result.find(r => (r as any)._id === 'item1');
+    const nodeResult = result.find(r => (r as any)._id === 'node1');
+    expect(itemResult?.resultType).toBe('item');
+    expect(nodeResult?.resultType).toBe('node');
   });
 
   it('should handle empty items array', async () => {
@@ -419,8 +423,8 @@ describe('4-way hybrid search integration', () => {
     // Step 3: Combine
     const combined = combineResults(mergedItems, mergedNodes);
 
-    // Step 4: Apply time decay
-    const final = applyTimeDecay(combined, 30);
+    // Step 4: Apply time decay (cast to expected type - test validates the flow)
+    const final = applyTimeDecay(combined as any, 30);
 
     // Verify hybrid items rank higher
     const hybridResults = final.filter(r => r.sourceType === 'hybrid');
@@ -466,19 +470,19 @@ describe('4-way hybrid search integration', () => {
     const mergedItems = simpleRRF(vectorItems, textItems, (item) => item._id);
     const mergedNodes = simpleRRF(vectorNodes, textNodes, (node) => node._id);
     const combined = combineResults(mergedItems, mergedNodes);
-    const final = applyTimeDecay(combined, 30).slice(0, 5); // Top 5
+    const final = (applyTimeDecay(combined as any, 30) as any[]).slice(0, 5); // Top 5
 
     // Verify structure
     expect(final.length).toBeLessThanOrEqual(5);
-    expect(final.every(r => 'finalScore' in r)).toBe(true);
-    expect(final.every(r => 'rrfScore' in r)).toBe(true);
-    expect(final.every(r => 'sourceType' in r)).toBe(true);
-    expect(final.every(r => 'resultType' in r)).toBe(true);
+    expect(final.every((r: any) => 'finalScore' in r)).toBe(true);
+    expect(final.every((r: any) => 'rrfScore' in r)).toBe(true);
+    expect(final.every((r: any) => 'sourceType' in r)).toBe(true);
+    expect(final.every((r: any) => 'resultType' in r)).toBe(true);
 
     // Verify hybrid "voyage-4" content ranks highly
-    const voyageResults = final.filter(r =>
-      ('content' in r.doc && r.doc.content.includes('voyage-4')) ||
-      ('name' in r.doc && r.doc.name === 'voyage-4')
+    const voyageResults = final.filter((r: any) =>
+      (r.doc && 'content' in r.doc && r.doc.content.includes('voyage-4')) ||
+      (r.doc && 'name' in r.doc && r.doc.name === 'voyage-4')
     );
     expect(voyageResults.length).toBeGreaterThan(0);
   });

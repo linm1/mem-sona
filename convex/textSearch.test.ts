@@ -195,7 +195,7 @@ describe('textSearchNodes', () => {
 
     expect(result).toHaveLength(2);
     expect(mockCtx.db.query).toHaveBeenCalledWith('graphNodes');
-    expect(mockWithSearchIndex).toHaveBeenCalledWith('by_name', expect.any(Function));
+    expect(mockWithSearchIndex).toHaveBeenCalledWith('by_name_search', expect.any(Function));
     expect(mockTake).toHaveBeenCalledWith(10);
   });
 
