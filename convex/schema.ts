@@ -33,6 +33,11 @@ export default defineSchema({
       vectorField: "embedding",
       dimensions: 1024, // Fixed dimension for voyage-4 model (default)
       filterFields: ["category"],
+    })
+    // Text search index for BM25-style keyword matching (hybrid search)
+    .searchIndex("by_content", {
+      searchField: "content",
+      filterFields: ["category"],
     }),
 
   // Layer 3: Evolving summaries per category
@@ -68,6 +73,11 @@ export default defineSchema({
       vectorField: "embedding",
       dimensions: 1024, // Fixed dimension for voyage-4 model (default)
       filterFields: ["type"],
+    })
+    // Text search index for BM25-style keyword matching (hybrid search)
+    .searchIndex("by_name", {
+      searchField: "name",
+      filterFields: ["type", "status"],
     }),
 
   // Relationships between entities
