@@ -5,3 +5,5 @@
 
 export { useDebouncedValue } from './useDebouncedValue';
 export { useHybridSearch } from './useHybridSearch';
+export { useMemoryEditor } from './useMemoryEditor';
+export type { UseMemoryEditorReturn } from './useMemoryEditor';

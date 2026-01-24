@@ -334,3 +334,148 @@ export const deleteItemInternal = internalMutation({
     await ctx.db.delete(args.itemId);
   },
 });
+
+/**
+ * Public mutation to delete an item.
+ * Used by Memory Explorer editor for item deletion.
+ *
+ * Note: This is a hard delete - items don't have a status field.
+ * Original source data remains in resources table (immutable audit trail).
+ *
+ * @param itemId - Item ID to delete
+ * @returns true on successful deletion
+ * @throws Error if item not found
+ */
+export const deleteItem = mutation({
+  args: {
+    itemId: v.id("items"),
+  },
+  handler: async (ctx, args): Promise<boolean> => {
+    const item = await ctx.db.get(args.itemId);
+    if (!item) {
+      throw new Error(`Item not found: ${args.itemId}`);
+    }
+
+    await ctx.db.delete(args.itemId);
+    return true;
+  },
+});
+
+/**
+ * Update an item's content and/or category.
+ * This is an action because it may need to regenerate embeddings.
+ *
+ * Behavior:
+ * - If content changes: regenerates embedding via voyage-4
+ * - If only category changes: no embedding regeneration (faster)
+ * - Updates accessedAt timestamp
+ * - Preserves resourceId and createdAt (immutable)
+ *
+ * @param itemId - Item ID to update
+ * @param content - New content (optional)
+ * @param category - New category (optional)
+ * @returns Updated item
+ * @throws Error if item not found or validation fails
+ */
+export const updateItem = action({
+  args: {
+    itemId: v.id("items"),
+    content: v.optional(v.string()),
+    category: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Doc<"items">> => {
+    // Validate inputs
+    if (args.content !== undefined && args.content.trim() === '') {
+      throw new Error('Content cannot be empty');
+    }
+    if (args.category !== undefined && args.category.trim() === '') {
+      throw new Error('Category cannot be empty');
+    }
+
+    // Fetch existing item
+    const existingItem = await ctx.runQuery(internal.items.getItemInternal, {
+      itemId: args.itemId,
+    });
+
+    if (!existingItem) {
+      throw new Error(`Item not found: ${args.itemId}`);
+    }
+
+    // Determine if content changed (requires embedding regeneration)
+    const contentChanged = args.content !== undefined && args.content !== existingItem.content;
+
+    // Prepare update payload
+    const updates: {
+      content?: string;
+      category?: string;
+      embedding?: number[];
+      accessedAt: number;
+    } = {
+      accessedAt: Date.now(),
+    };
+
+    if (args.content !== undefined) {
+      updates.content = args.content;
+    }
+
+    if (args.category !== undefined) {
+      updates.category = args.category;
+    }
+
+    // Regenerate embedding if content changed
+    if (contentChanged && args.content) {
+      const embedding = await ctx.runAction(internal.items.generateEmbedding, {
+        text: args.content,
+        inputType: "document",
+      });
+      updates.embedding = embedding;
+    }
+
+    // Apply update via internal mutation
+    await ctx.runMutation(internal.items.patchItemInternal, {
+      itemId: args.itemId,
+      updates,
+    });
+
+    // Fetch and return updated item
+    const updatedItem = await ctx.runQuery(internal.items.getItemInternal, {
+      itemId: args.itemId,
+    });
+
+    if (!updatedItem) {
+      throw new Error('Failed to retrieve updated item');
+    }
+
+    return updatedItem;
+  },
+});
+
+/**
+ * Internal query to get item by ID (for use by actions).
+ */
+export const getItemInternal = internalQuery({
+  args: {
+    itemId: v.id("items"),
+  },
+  handler: async (ctx, args): Promise<Doc<"items"> | null> => {
+    return await ctx.db.get(args.itemId);
+  },
+});
+
+/**
+ * Internal mutation to patch item fields (called by updateItem action).
+ */
+export const patchItemInternal = internalMutation({
+  args: {
+    itemId: v.id("items"),
+    updates: v.object({
+      content: v.optional(v.string()),
+      category: v.optional(v.string()),
+      embedding: v.optional(v.array(v.float64())),
+      accessedAt: v.number(),
+    }),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.patch(args.itemId, args.updates);
+  },
+});
