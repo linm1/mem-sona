@@ -94,6 +94,18 @@ export type MergedResult = {
   source: "vector" | "graph" | "hybrid";
   /** Node ID for graph nodes (used for graph visualization filtering) */
   nodeId?: string;
+  // Item-specific fields (for editing)
+  /** Item ID for items (used for editing/deletion) */
+  itemId?: string;
+  /** Category for items (tech_preferences, projects, etc.) */
+  category?: string;
+  // Node-specific fields (for editing)
+  /** Node name for graph nodes */
+  name?: string;
+  /** Node type (project, tool, skill, concept) */
+  nodeType?: string;
+  /** Node description from properties */
+  description?: string;
 };
 
 /**
@@ -108,6 +120,13 @@ const mergedResultValidator = v.object({
   timestamp: v.number(),
   source: v.union(v.literal("vector"), v.literal("graph"), v.literal("hybrid")),
   nodeId: v.optional(v.string()),
+  // Item-specific fields (for editing)
+  itemId: v.optional(v.string()),
+  category: v.optional(v.string()),
+  // Node-specific fields (for editing)
+  name: v.optional(v.string()),
+  nodeType: v.optional(v.string()),
+  description: v.optional(v.string()),
 });
 
 /**
@@ -1107,15 +1126,31 @@ export const hybridSearch = action({
         source = "vector";
       }
 
-      return {
+      // Build base result with common fields
+      const baseResult: MergedResult = {
         type: r.resultType,
         content: r.content,
         score: r.rrfScore, // Use RRF score as original score
         finalScore: r.finalScore, // RRF score * time-decay
         timestamp: r.createdAt,
         source,
-        nodeId: r.nodeId, // Preserve nodeId for graph visualization
       };
+
+      // Add item-specific fields for editing
+      if (r.resultType === "item") {
+        baseResult.itemId = r._id;
+        baseResult.category = r.category;
+      }
+
+      // Add node-specific fields for editing
+      if (r.resultType === "node") {
+        baseResult.nodeId = r.nodeId;
+        baseResult.name = r.name;
+        baseResult.nodeType = r.type;
+        baseResult.description = r.description;
+      }
+
+      return baseResult;
     });
 
     // Assemble context (markdown formatting with token budget)
@@ -1185,6 +1220,8 @@ export interface MergedNodeResult {
   nodeId: string;
   vectorRank?: number;
   textRank?: number;
+  /** Node description from properties (for editing) */
+  description?: string;
 }
 
 /** Combined result (item or node) before time decay */
@@ -1198,6 +1235,16 @@ export interface CombinedResult4Way {
   nodeId?: string;
   vectorRank?: number;
   textRank?: number;
+  // Item metadata (for editing)
+  /** Category for items (tech_preferences, projects, etc.) */
+  category?: string;
+  // Node metadata (for editing)
+  /** Node name for graph nodes */
+  name?: string;
+  /** Node type (project, tool, skill, concept) */
+  type?: string;
+  /** Node description from properties */
+  description?: string;
 }
 
 /** Final result after time decay is applied */
@@ -1391,6 +1438,8 @@ export function mergeNodesRRF(
       nodeId: doc._id,
       vectorRank,
       textRank,
+      // Preserve description from properties for editing
+      description: doc.properties?.description,
     }));
 }
 
@@ -1419,6 +1468,8 @@ export function combineItemsAndNodes(
     resultType: item.resultType,
     vectorRank: item.vectorRank,
     textRank: item.textRank,
+    // Preserve item metadata for editing
+    category: item.category,
   }));
 
   const nodesWithContent: CombinedResult4Way[] = mergedNodes.map((node) => ({
@@ -1431,6 +1482,10 @@ export function combineItemsAndNodes(
     nodeId: node.nodeId,
     vectorRank: node.vectorRank,
     textRank: node.textRank,
+    // Preserve node metadata for editing
+    name: node.name,
+    type: node.type,
+    description: node.description,
   }));
 
   return [...itemsWithContent, ...nodesWithContent];

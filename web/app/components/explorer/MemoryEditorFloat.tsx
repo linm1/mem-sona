@@ -303,7 +303,16 @@ export function MemoryEditorFloat({
 
   const isItem = result.type === 'item';
   const relativeTime = formatRelativeTime(result.timestamp);
-  const displayId = isItem ? result.itemId : result.nodeId;
+
+  // Display meaningful identifier: node name for nodes, truncated content for items
+  const HEADER_CONTENT_MAX_LENGTH = 40;
+  const displayIdentifier = isItem
+    ? result.content
+      ? result.content.length > HEADER_CONTENT_MAX_LENGTH
+        ? `${result.content.slice(0, HEADER_CONTENT_MAX_LENGTH)}...`
+        : result.content
+      : undefined
+    : result.name;
 
   return (
     <>
@@ -338,7 +347,7 @@ export function MemoryEditorFloat({
             <div className="flex items-center gap-3">
               <TypeBadge type={result.type} />
               <span id={titleId} className="font-mono text-sm truncate max-w-[200px]">
-                {displayId}
+                {displayIdentifier || 'Untitled'}
               </span>
             </div>
             <button

@@ -140,7 +140,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockItemResult({ content: 'Test content here' });
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const contentField = screen.getByLabelText(/content/i) as HTMLTextAreaElement;
+      const contentField = screen.getByRole('textbox', { name: /content/i }) as HTMLTextAreaElement;
       expect(contentField.value).toBe('Test content here');
     });
 
@@ -177,7 +177,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockNodeResult();
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const nameField = screen.getByLabelText(/name/i);
+      const nameField = screen.getByRole('textbox', { name: /name/i });
       expect(nameField).toBeInTheDocument();
       expect(nameField.tagName).toBe('INPUT');
     });
@@ -186,7 +186,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockNodeResult();
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const typeField = screen.getByLabelText(/type/i);
+      const typeField = screen.getByRole('combobox', { name: /type/i });
       expect(typeField).toBeInTheDocument();
       expect(typeField.tagName).toBe('SELECT');
     });
@@ -195,7 +195,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockNodeResult();
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const descField = screen.getByLabelText(/description/i);
+      const descField = screen.getByRole('textbox', { name: /description/i });
       expect(descField).toBeInTheDocument();
       expect(descField.tagName).toBe('TEXTAREA');
     });
@@ -204,7 +204,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockNodeResult({ name: 'React' });
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const nameField = screen.getByLabelText(/name/i) as HTMLInputElement;
+      const nameField = screen.getByRole('textbox', { name: /name/i }) as HTMLInputElement;
       expect(nameField.value).toBe('React');
     });
 
@@ -212,7 +212,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockNodeResult({ nodeType: 'tool' });
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const typeField = screen.getByLabelText(/type/i) as HTMLSelectElement;
+      const typeField = screen.getByRole('combobox', { name: /type/i }) as HTMLSelectElement;
       expect(typeField.value).toBe('tool');
     });
 
@@ -220,7 +220,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockNodeResult({ description: 'A JS library' });
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const descField = screen.getByLabelText(/description/i) as HTMLTextAreaElement;
+      const descField = screen.getByRole('textbox', { name: /description/i }) as HTMLTextAreaElement;
       expect(descField.value).toBe('A JS library');
     });
 
@@ -242,7 +242,7 @@ describe('MemoryEditorFloat', () => {
       const result = createMockNodeResult();
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      const typeField = screen.getByLabelText(/type/i) as HTMLSelectElement;
+      const typeField = screen.getByRole('combobox', { name: /type/i }) as HTMLSelectElement;
       const options = Array.from(typeField.options).map(o => o.value);
 
       expect(options).toContain('project');
@@ -697,18 +697,23 @@ describe('MemoryEditorFloat', () => {
       expect(screen.getByText('vector')).toBeInTheDocument();
     });
 
-    it('shows ID for items', () => {
-      const result = createMockItemResult({ itemId: 'item123' });
+    it('shows truncated content in header for items', () => {
+      const result = createMockItemResult({ content: 'This is a very long content that should be truncated in the header display' });
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      expect(screen.getByText(/item123/)).toBeInTheDocument();
+      // Should show truncated content (first 40 chars + ...) in the header
+      const headerTitle = document.getElementById('memory-editor-title');
+      expect(headerTitle?.textContent).toContain('This is a very long content that should');
+      expect(headerTitle?.textContent).toContain('...');
     });
 
-    it('shows ID for nodes', () => {
-      const result = createMockNodeResult({ nodeId: 'node456' });
+    it('shows name in header for nodes', () => {
+      const result = createMockNodeResult({ name: 'TestNodeName' });
       render(<MemoryEditorFloat {...defaultProps} result={result} />);
 
-      expect(screen.getByText(/node456/)).toBeInTheDocument();
+      // Should show node name in the header
+      const headerTitle = document.getElementById('memory-editor-title');
+      expect(headerTitle?.textContent).toBe('TestNodeName');
     });
   });
 

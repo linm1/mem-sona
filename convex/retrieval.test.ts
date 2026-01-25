@@ -601,3 +601,201 @@ describe('hybridSearch4WayHandler integration', () => {
     });
   });
 });
+
+// ============================================================================
+// METADATA PRESERVATION TESTS (TDD - For Edit Window Fix)
+// ============================================================================
+
+describe('metadata preservation through pipeline', () => {
+  describe('item metadata', () => {
+    it('should preserve category field through combineItemsAndNodes', async () => {
+      const { combineItemsAndNodes } = await import('./retrieval');
+
+      const mergedItems = [
+        {
+          _id: 'item123',
+          content: 'Test content',
+          category: 'tech_preferences',
+          createdAt: Date.now(),
+          rrfScore: 0.1,
+          sourceType: 'vector' as const,
+          resultType: 'item' as const,
+        },
+      ];
+
+      const combined = combineItemsAndNodes(mergedItems as any, []);
+
+      expect(combined[0].category).toBe('tech_preferences');
+    });
+
+    it('should map _id to itemId for items through hybridSearch4WayHandler', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+      const vectorItems = [
+        createMockItem({ _id: 'item456' as Id<'items'>, content: 'Test', createdAt: now, category: 'projects' }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute(vectorItems, [], [], [], 10);
+
+      // The result should have _id preserved for mapping to itemId
+      expect(results[0]._id).toBe('item456');
+      expect(results[0].category).toBe('projects');
+    });
+  });
+
+  describe('node metadata', () => {
+    it('should preserve name field through combineItemsAndNodes', async () => {
+      const { combineItemsAndNodes } = await import('./retrieval');
+
+      const mergedNodes = [
+        {
+          _id: 'node123',
+          name: 'TypeScript',
+          type: 'skill',
+          context: 'skill: TypeScript - A programming language',
+          createdAt: Date.now(),
+          rrfScore: 0.09,
+          sourceType: 'hybrid' as const,
+          resultType: 'node' as const,
+          nodeId: 'node123',
+          description: 'A programming language',
+        },
+      ];
+
+      const combined = combineItemsAndNodes([], mergedNodes as any);
+
+      expect(combined[0].name).toBe('TypeScript');
+    });
+
+    it('should preserve type field through combineItemsAndNodes', async () => {
+      const { combineItemsAndNodes } = await import('./retrieval');
+
+      const mergedNodes = [
+        {
+          _id: 'node123',
+          name: 'mem-sona',
+          type: 'project',
+          context: 'project: mem-sona - A memory system',
+          createdAt: Date.now(),
+          rrfScore: 0.09,
+          sourceType: 'vector' as const,
+          resultType: 'node' as const,
+          nodeId: 'node123',
+          description: 'A memory system',
+        },
+      ];
+
+      const combined = combineItemsAndNodes([], mergedNodes as any);
+
+      expect(combined[0].type).toBe('project');
+    });
+
+    it('should preserve description field through combineItemsAndNodes', async () => {
+      const { combineItemsAndNodes } = await import('./retrieval');
+
+      const mergedNodes = [
+        {
+          _id: 'node123',
+          name: 'Convex',
+          type: 'tool',
+          context: 'tool: Convex - Backend platform',
+          createdAt: Date.now(),
+          rrfScore: 0.08,
+          sourceType: 'text' as const,
+          resultType: 'node' as const,
+          nodeId: 'node123',
+          description: 'Backend platform',
+        },
+      ];
+
+      const combined = combineItemsAndNodes([], mergedNodes as any);
+
+      expect(combined[0].description).toBe('Backend platform');
+    });
+
+    it('should capture description from node properties in mergeNodesRRF', async () => {
+      const { mergeNodesRRF } = await import('./retrieval');
+
+      const vectorNodes = [
+        createMockNode({
+          _id: 'n1' as Id<'graphNodes'>,
+          name: 'TestTool',
+          type: 'tool',
+          properties: { description: 'A test tool for testing' },
+        }),
+      ];
+
+      const merged = mergeNodesRRF(vectorNodes, []);
+
+      expect(merged[0].description).toBe('A test tool for testing');
+    });
+
+    it('should handle nodes without description in properties', async () => {
+      const { mergeNodesRRF } = await import('./retrieval');
+
+      const vectorNodes = [
+        createMockNode({
+          _id: 'n1' as Id<'graphNodes'>,
+          name: 'NoDescNode',
+          type: 'concept',
+          properties: {},
+        }),
+      ];
+
+      const merged = mergeNodesRRF(vectorNodes, []);
+
+      expect(merged[0].description).toBeUndefined();
+    });
+  });
+
+  describe('full pipeline metadata flow', () => {
+    it('should preserve all node metadata through complete pipeline', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+
+      const vectorNodes = [
+        createMockNode({
+          _id: 'n123' as Id<'graphNodes'>,
+          name: 'voyage-4',
+          type: 'tool',
+          properties: { description: 'Embedding model with 1024 dimensions' },
+          createdAt: now,
+        }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute([], [], vectorNodes, [], 10);
+
+      const nodeResult = results.find(r => r.resultType === 'node');
+      expect(nodeResult).toBeDefined();
+      expect(nodeResult!.name).toBe('voyage-4');
+      expect(nodeResult!.type).toBe('tool');
+      expect(nodeResult!.description).toBe('Embedding model with 1024 dimensions');
+      expect(nodeResult!.nodeId).toBe('n123');
+    });
+
+    it('should preserve all item metadata through complete pipeline', async () => {
+      const { hybridSearch4WayHandler } = await import('./retrieval');
+
+      const now = Date.now();
+
+      const vectorItems = [
+        createMockItem({
+          _id: 'i789' as Id<'items'>,
+          content: 'User prefers TypeScript over JavaScript',
+          category: 'tech_preferences',
+          createdAt: now,
+        }),
+      ];
+
+      const results = hybridSearch4WayHandler.execute(vectorItems, [], [], [], 10);
+
+      const itemResult = results.find(r => r.resultType === 'item');
+      expect(itemResult).toBeDefined();
+      expect(itemResult!._id).toBe('i789');
+      expect(itemResult!.category).toBe('tech_preferences');
+      expect(itemResult!.content).toBe('User prefers TypeScript over JavaScript');
+    });
+  });
+});
