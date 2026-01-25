@@ -341,4 +341,81 @@ describe('MemoryGridCard', () => {
       expect(scoreBar).toBeInTheDocument();
     });
   });
+
+  describe('Relationship Badges', () => {
+    it('displays relationship badges for nodes with edges', () => {
+      const result = createMockNodeResult({
+        edges: [
+          { relationship: 'uses', targetName: 'Convex', targetNodeType: 'tool', weight: 0.8 },
+          { relationship: 'requires', targetName: 'TypeScript', targetNodeType: 'skill', weight: 0.9 },
+        ],
+      });
+      const handleClick = vi.fn();
+
+      render(<MemoryGridCard result={result} onClick={handleClick} />);
+
+      expect(screen.getByText('uses: Convex')).toBeInTheDocument();
+      expect(screen.getByText('requires: TypeScript')).toBeInTheDocument();
+    });
+
+    it('limits relationship badges to 3 with overflow indicator', () => {
+      const result = createMockNodeResult({
+        edges: [
+          { relationship: 'uses', targetName: 'Convex', targetNodeType: 'tool', weight: 0.8 },
+          { relationship: 'uses', targetName: 'React', targetNodeType: 'tool', weight: 0.7 },
+          { relationship: 'requires', targetName: 'TypeScript', targetNodeType: 'skill', weight: 0.9 },
+          { relationship: 'knows', targetName: 'JavaScript', targetNodeType: 'skill', weight: 0.6 },
+          { relationship: 'uses', targetName: 'Next.js', targetNodeType: 'tool', weight: 0.5 },
+        ],
+      });
+      const handleClick = vi.fn();
+
+      render(<MemoryGridCard result={result} onClick={handleClick} />);
+
+      // Should show first 3 badges
+      expect(screen.getByText('uses: Convex')).toBeInTheDocument();
+      expect(screen.getByText('uses: React')).toBeInTheDocument();
+      expect(screen.getByText('requires: TypeScript')).toBeInTheDocument();
+
+      // Should show overflow indicator
+      expect(screen.getByText('+2 more')).toBeInTheDocument();
+
+      // Should NOT show 4th and 5th badges
+      expect(screen.queryByText('knows: JavaScript')).not.toBeInTheDocument();
+      expect(screen.queryByText('uses: Next.js')).not.toBeInTheDocument();
+    });
+
+    it('does not display relationship section for items', () => {
+      const result = createMockItemResult();
+      const handleClick = vi.fn();
+
+      const { container } = render(<MemoryGridCard result={result} onClick={handleClick} />);
+
+      // Should not have any relationship badges
+      const badges = container.querySelectorAll('.badge-relationship');
+      expect(badges.length).toBe(0);
+    });
+
+    it('does not display relationship section for nodes without edges', () => {
+      const result = createMockNodeResult({ edges: undefined });
+      const handleClick = vi.fn();
+
+      const { container } = render(<MemoryGridCard result={result} onClick={handleClick} />);
+
+      // Should not have any relationship badges
+      const badges = container.querySelectorAll('.badge-relationship');
+      expect(badges.length).toBe(0);
+    });
+
+    it('does not display relationship section for nodes with empty edges array', () => {
+      const result = createMockNodeResult({ edges: [] });
+      const handleClick = vi.fn();
+
+      const { container } = render(<MemoryGridCard result={result} onClick={handleClick} />);
+
+      // Should not have any relationship badges
+      const badges = container.querySelectorAll('.badge-relationship');
+      expect(badges.length).toBe(0);
+    });
+  });
 });

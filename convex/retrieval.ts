@@ -74,6 +74,31 @@ const graphResultValidator = v.object({
 });
 
 /**
+ * Edge/relationship data for graph nodes.
+ * Represents a connection from a node to another entity.
+ */
+export type EdgeData = {
+  /** Relationship type (e.g., "uses", "requires", "knows") */
+  relationship: string;
+  /** Name of the target node */
+  targetName: string;
+  /** Type of the target node (project, tool, skill, concept) */
+  targetNodeType: string;
+  /** Relationship strength/confidence (0-1) */
+  weight: number;
+};
+
+/**
+ * Convex validator for EdgeData type.
+ */
+const edgeDataValidator = v.object({
+  relationship: v.string(),
+  targetName: v.string(),
+  targetNodeType: v.string(),
+  weight: v.number(),
+});
+
+/**
  * Merged results from both vector and graph search.
  * Represents the unified output after combining and deduplicating results from both layers.
  *
@@ -106,6 +131,8 @@ export type MergedResult = {
   nodeType?: string;
   /** Node description from properties */
   description?: string;
+  /** Edge/relationship data for nodes (outgoing edges) */
+  edges?: EdgeData[];
 };
 
 /**
@@ -127,6 +154,8 @@ const mergedResultValidator = v.object({
   name: v.optional(v.string()),
   nodeType: v.optional(v.string()),
   description: v.optional(v.string()),
+  // Edge/relationship data for nodes
+  edges: v.optional(v.array(edgeDataValidator)),
 });
 
 /**
@@ -877,6 +906,58 @@ export const vectorSearchNodesDocs = internalAction({
   },
 });
 
+/**
+ * Fetch edges for a list of node IDs and return structured EdgeData.
+ * Used to enrich node results with relationship information.
+ *
+ * @param ctx - Convex action context
+ * @param nodeIds - Array of node IDs to fetch edges for
+ * @returns Map of nodeId -> EdgeData[]
+ */
+export async function fetchEdgesForNodes(
+  ctx: any,
+  nodeIds: Array<Id<"graphNodes">>
+): Promise<Map<string, EdgeData[]>> {
+  const edgeMap = new Map<string, EdgeData[]>();
+
+  // Fetch edges for all nodes in parallel
+  const edgePromises = nodeIds.map(async (nodeId) => {
+    const edges: Doc<"graphEdges">[] = await ctx.runQuery(
+      internal.graph.getEdgesFromInternal,
+      { fromNodeId: nodeId }
+    );
+
+    // Filter for active edges and build EdgeData
+    const edgeData: EdgeData[] = [];
+    for (const edge of edges) {
+      if (edge.status !== "active") continue;
+
+      // Get target node name and type
+      const targetNode = await ctx.runQuery(internal.graph.getNodeInternal, {
+        nodeId: edge.toNode,
+      });
+
+      if (targetNode && targetNode.status === "active") {
+        edgeData.push({
+          relationship: edge.relationship,
+          targetName: targetNode.name,
+          targetNodeType: targetNode.type,
+          weight: edge.weight,
+        });
+      }
+    }
+
+    return { nodeId, edgeData };
+  });
+
+  const results = await Promise.all(edgePromises);
+  for (const { nodeId, edgeData } of results) {
+    edgeMap.set(nodeId, edgeData);
+  }
+
+  return edgeMap;
+}
+
 // ============ RESULT MERGING AND RANKING ============
 
 /**
@@ -1113,6 +1194,15 @@ export const hybridSearch = action({
       RRF_CONFIG.DEFAULT_TOP_K
     );
 
+    // Fetch edges for all node results in parallel
+    const nodeIds = rrfResults
+      .filter((r) => r.resultType === "node" && r.nodeId)
+      .map((r) => r.nodeId as Id<"graphNodes">);
+
+    const edgeMap = nodeIds.length > 0
+      ? await fetchEdgesForNodes(ctx, nodeIds)
+      : new Map<string, EdgeData[]>();
+
     // Map FinalResult4Way to MergedResult for backward compatibility
     // This preserves the existing context assembly logic and output format
     const mergedResults: Array<MergedResult> = rrfResults.map((r: FinalResult4Way): MergedResult => {
@@ -1148,6 +1238,8 @@ export const hybridSearch = action({
         baseResult.name = r.name;
         baseResult.nodeType = r.type;
         baseResult.description = r.description;
+        // Add edge data from pre-fetched map
+        baseResult.edges = edgeMap.get(r.nodeId || "") || [];
       }
 
       return baseResult;
@@ -1222,6 +1314,8 @@ export interface MergedNodeResult {
   textRank?: number;
   /** Node description from properties (for editing) */
   description?: string;
+  /** Edge/relationship data for nodes (outgoing edges) */
+  edges?: EdgeData[];
 }
 
 /** Combined result (item or node) before time decay */
@@ -1245,6 +1339,8 @@ export interface CombinedResult4Way {
   type?: string;
   /** Node description from properties */
   description?: string;
+  /** Edge/relationship data for nodes (outgoing edges) */
+  edges?: EdgeData[];
 }
 
 /** Final result after time decay is applied */

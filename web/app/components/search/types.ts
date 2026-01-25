@@ -3,6 +3,21 @@
  * These types match the Convex API response structure
  */
 
+/**
+ * Edge/relationship data for graph nodes
+ * Represents a connection from a node to another entity
+ */
+export interface EdgeData {
+  /** Relationship type (e.g., "uses", "requires", "knows") */
+  relationship: string;
+  /** Name of the target node */
+  targetName: string;
+  /** Type of the target node (project, tool, skill, concept) */
+  targetNodeType: string;
+  /** Relationship strength/confidence (0-1) */
+  weight: number;
+}
+
 export type MergedResult = {
   type: "item" | "node";
   content: string;
@@ -30,6 +45,8 @@ export type MergedResult = {
   description?: string;
   /** Node status (active, archived) */
   status?: string;
+  /** Edge/relationship data for nodes (outgoing edges) */
+  edges?: EdgeData[];
 };
 
 export type HybridSearchResult = {

@@ -1,6 +1,6 @@
 import { useCallback, useRef, KeyboardEvent } from 'react';
 import { MergedResult } from '../search/types';
-import { TypeBadge, SourceBadge } from '../search/badges';
+import { TypeBadge, SourceBadge, RelationshipBadge } from '../search/badges';
 import { formatRelativeTime, getScoreIntensity } from '../../utils/formatters';
 
 /**
@@ -154,6 +154,26 @@ export function MemoryGridCard({ result, onClick }: MemoryGridCardProps) {
           </span>
         )}
       </div>
+
+      {/* Relationship badges for nodes with edges (max 3) */}
+      {result.type === 'node' && result.edges && result.edges.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {result.edges.slice(0, 3).map((edge, idx) => (
+            <RelationshipBadge
+              key={idx}
+              relationship={edge.relationship}
+              targetName={edge.targetName}
+              targetNodeType={edge.targetNodeType}
+              weight={edge.weight}
+            />
+          ))}
+          {result.edges.length > 3 && (
+            <span className="text-xs text-muted font-mono">
+              +{result.edges.length - 3} more
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Title: Name for nodes, truncated content for items */}
       <h3 className="font-mono-brutal text-sm font-bold text-ink mb-1 line-clamp-2">
