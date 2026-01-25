@@ -13,7 +13,7 @@ export interface MemorySearchArgs {
    * When true, only return results with source: "hybrid".
    * These are results that appeared in both vector and text search,
    * indicating higher quality/relevance.
-   * @default false
+   * @default true
    */
   hybridOnly?: boolean;
 }

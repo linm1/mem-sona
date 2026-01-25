@@ -130,7 +130,7 @@ describe('ToolHandlers', () => {
         expect(text).toContain('Hybrid result');
       });
 
-      it('returns all results when hybridOnly is not provided (default behavior)', async () => {
+      it('filters to hybrid-only when hybridOnly is not provided (default: true)', async () => {
         const mockResults = {
           query: 'test query',
           results: [
@@ -162,10 +162,10 @@ describe('ToolHandlers', () => {
         });
 
         expect(result.isError).toBeFalsy();
-        // Should contain both results by default
+        // Should only contain hybrid results by default (hybridOnly: true)
         const text = getResultText(result);
-        expect(text).toContain('Vector result');
         expect(text).toContain('Hybrid result');
+        expect(text).not.toContain('Vector result');
       });
 
       it('returns empty message when hybridOnly is true and no hybrid results exist', async () => {

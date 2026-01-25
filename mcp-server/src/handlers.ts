@@ -52,7 +52,7 @@ export class ToolHandlers {
    */
   async handleMemorySearch(args: MemorySearchArgs): Promise<CallToolResult> {
     try {
-      const { query, maxTokens = 2000, hybridOnly = false } = args;
+      const { query, maxTokens = 2000, hybridOnly = true } = args;
 
       // Call Convex hybridSearch action
       const result = await this.convex.action(api.retrieval.hybridSearch, {

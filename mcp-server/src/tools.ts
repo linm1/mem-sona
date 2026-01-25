@@ -21,8 +21,8 @@ export const TOOL_DEFINITIONS = [
         },
         hybridOnly: {
           type: "boolean",
-          description: "When true, only return results that appeared in both vector and text search (higher quality). Default: false",
-          default: false
+          description: "When true, only return results that appeared in both vector and text search (higher quality). Default: true",
+          default: true
         }
       },
       required: ["query"]
