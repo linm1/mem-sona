@@ -6,3 +6,4 @@
 export { TypeBadge } from './TypeBadge';
 export { SourceBadge } from './SourceBadge';
 export { RelationshipBadge } from './RelationshipBadge';
+// ConnectionsSection replaced by ConnectionsDrawer in explorer folder

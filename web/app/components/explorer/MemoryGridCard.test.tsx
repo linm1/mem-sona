@@ -342,80 +342,102 @@ describe('MemoryGridCard', () => {
     });
   });
 
-  describe('Relationship Badges', () => {
-    it('displays relationship badges for nodes with edges', () => {
+  describe('Connections Indicator and Drawer', () => {
+    it('displays connections indicator for nodes with edges', () => {
       const result = createMockNodeResult({
         edges: [
           { relationship: 'uses', targetName: 'Convex', targetNodeType: 'tool', weight: 0.8 },
-          { relationship: 'requires', targetName: 'TypeScript', targetNodeType: 'skill', weight: 0.9 },
+          { relationship: 'requires', targetName: 'Python', targetNodeType: 'skill', weight: 0.9 },
         ],
       });
       const handleClick = vi.fn();
 
       render(<MemoryGridCard result={result} onClick={handleClick} />);
 
-      expect(screen.getByText('uses: Convex')).toBeInTheDocument();
-      expect(screen.getByText('requires: TypeScript')).toBeInTheDocument();
+      // Should show connections indicator with count
+      const indicator = screen.getByRole('button', { name: /View 2 connections/i });
+      expect(indicator).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
     });
 
-    it('limits relationship badges to 3 with overflow indicator', () => {
+    it('opens drawer when connections indicator is clicked', () => {
       const result = createMockNodeResult({
         edges: [
           { relationship: 'uses', targetName: 'Convex', targetNodeType: 'tool', weight: 0.8 },
           { relationship: 'uses', targetName: 'React', targetNodeType: 'tool', weight: 0.7 },
-          { relationship: 'requires', targetName: 'TypeScript', targetNodeType: 'skill', weight: 0.9 },
-          { relationship: 'knows', targetName: 'JavaScript', targetNodeType: 'skill', weight: 0.6 },
-          { relationship: 'uses', targetName: 'Next.js', targetNodeType: 'tool', weight: 0.5 },
+          { relationship: 'requires', targetName: 'Python', targetNodeType: 'skill', weight: 0.9 },
         ],
       });
       const handleClick = vi.fn();
 
       render(<MemoryGridCard result={result} onClick={handleClick} />);
 
-      // Should show first 3 badges
-      expect(screen.getByText('uses: Convex')).toBeInTheDocument();
-      expect(screen.getByText('uses: React')).toBeInTheDocument();
-      expect(screen.getByText('requires: TypeScript')).toBeInTheDocument();
+      // Click the connections indicator
+      const indicator = screen.getByRole('button', { name: /View 3 connections/i });
+      fireEvent.click(indicator);
 
-      // Should show overflow indicator
-      expect(screen.getByText('+2 more')).toBeInTheDocument();
+      // Drawer should be visible with type counts and edges
+      expect(screen.getByTestId('connections-drawer')).toBeInTheDocument();
+      expect(screen.getByText('2 tools')).toBeInTheDocument();
+      expect(screen.getByText('1 skill')).toBeInTheDocument();
 
-      // Should NOT show 4th and 5th badges
-      expect(screen.queryByText('knows: JavaScript')).not.toBeInTheDocument();
-      expect(screen.queryByText('uses: Next.js')).not.toBeInTheDocument();
+      // Edges should be listed
+      expect(screen.getAllByText('uses').length).toBe(2);
+      expect(screen.getByText('requires')).toBeInTheDocument();
+      expect(screen.getByText('Convex')).toBeInTheDocument();
+      expect(screen.getByText('React')).toBeInTheDocument();
+      expect(screen.getByText('Python')).toBeInTheDocument();
     });
 
-    it('does not display relationship section for items', () => {
+    it('does not trigger card onClick when connections indicator is clicked', () => {
+      const result = createMockNodeResult({
+        edges: [
+          { relationship: 'uses', targetName: 'Convex', targetNodeType: 'tool', weight: 0.8 },
+        ],
+      });
+      const handleClick = vi.fn();
+
+      render(<MemoryGridCard result={result} onClick={handleClick} />);
+
+      // Click the connections indicator
+      const indicator = screen.getByRole('button', { name: /View 1 connections/i });
+      fireEvent.click(indicator);
+
+      // Card onClick should NOT have been called
+      expect(handleClick).not.toHaveBeenCalled();
+
+      // But drawer should be open
+      expect(screen.getByTestId('connections-drawer')).toBeInTheDocument();
+    });
+
+    it('does not display connections indicator for items', () => {
       const result = createMockItemResult();
       const handleClick = vi.fn();
 
-      const { container } = render(<MemoryGridCard result={result} onClick={handleClick} />);
+      render(<MemoryGridCard result={result} onClick={handleClick} />);
 
-      // Should not have any relationship badges
-      const badges = container.querySelectorAll('.badge-relationship');
-      expect(badges.length).toBe(0);
+      // Should not have connections indicator
+      expect(screen.queryByRole('button', { name: /View.*connections/i })).not.toBeInTheDocument();
     });
 
-    it('does not display relationship section for nodes without edges', () => {
+    it('does not display connections indicator for nodes without edges', () => {
       const result = createMockNodeResult({ edges: undefined });
       const handleClick = vi.fn();
 
-      const { container } = render(<MemoryGridCard result={result} onClick={handleClick} />);
+      render(<MemoryGridCard result={result} onClick={handleClick} />);
 
-      // Should not have any relationship badges
-      const badges = container.querySelectorAll('.badge-relationship');
-      expect(badges.length).toBe(0);
+      // Should not have connections indicator
+      expect(screen.queryByRole('button', { name: /View.*connections/i })).not.toBeInTheDocument();
     });
 
-    it('does not display relationship section for nodes with empty edges array', () => {
+    it('does not display connections indicator for nodes with empty edges array', () => {
       const result = createMockNodeResult({ edges: [] });
       const handleClick = vi.fn();
 
-      const { container } = render(<MemoryGridCard result={result} onClick={handleClick} />);
+      render(<MemoryGridCard result={result} onClick={handleClick} />);
 
-      // Should not have any relationship badges
-      const badges = container.querySelectorAll('.badge-relationship');
-      expect(badges.length).toBe(0);
+      // Should not have connections indicator
+      expect(screen.queryByRole('button', { name: /View.*connections/i })).not.toBeInTheDocument();
     });
   });
 });

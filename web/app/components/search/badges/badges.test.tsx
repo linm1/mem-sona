@@ -131,15 +131,6 @@ describe('RelationshipBadge', () => {
     expect(badge).toBeInTheDocument();
   });
 
-  it('adjusts opacity based on weight', () => {
-    const { container } = render(
-      <RelationshipBadge {...defaultProps} weight={1.0} />
-    );
-
-    const badge = container.querySelector('.badge-relationship');
-    expect(badge).toHaveStyle({ opacity: '1' });
-  });
-
   it('has correct structure for accessibility', () => {
     render(<RelationshipBadge {...defaultProps} />);
 

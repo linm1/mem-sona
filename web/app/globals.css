@@ -478,16 +478,43 @@ input[type="radio"].radio-brutal:checked::after {
 .badge-relationship {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border: 1px solid var(--ink);
+  padding: 2px 6px;
+  border: 1.5px solid var(--ink);
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: white;
-  transition: opacity 0.2s ease, background 0.2s ease;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper);
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .badge-relationship:hover {
-  filter: brightness(1.1);
+  background: var(--highlight);
+}
+
+/* Relationship badge color variants - outline style */
+.badge-relationship.badge-project {
+  border-color: var(--highlight);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--highlight) 20%, var(--paper));
+}
+
+.badge-relationship.badge-tool {
+  border-color: var(--muted);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--muted) 15%, var(--paper));
+}
+
+.badge-relationship.badge-skill {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 15%, var(--paper));
+}
+
+.badge-relationship.badge-concept {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--paper);
 }
 
 /* ============================================

@@ -1,7 +1,10 @@
-import { useCallback, useRef, KeyboardEvent } from 'react';
+'use client';
+
+import { useCallback, useRef, useState, KeyboardEvent, MouseEvent } from 'react';
 import { MergedResult } from '../search/types';
-import { TypeBadge, SourceBadge, RelationshipBadge } from '../search/badges';
+import { TypeBadge, SourceBadge } from '../search/badges';
 import { formatRelativeTime, getScoreIntensity } from '../../utils/formatters';
+import { ConnectionsIndicator, ConnectionsDrawer } from './ConnectionsDrawer';
 
 /**
  * Props for MemoryGridCard component
@@ -100,6 +103,7 @@ function getNodeTypeBadgeClass(nodeType: string): string {
  * - Truncated content/name
  * - Keyboard accessible (Enter/Space to activate)
  * - FLIP animation support via DOMRect callback
+ * - Connections indicator with drawer (for nodes)
  *
  * @example
  * ```tsx
@@ -111,6 +115,7 @@ function getNodeTypeBadgeClass(nodeType: string): string {
  */
 export function MemoryGridCard({ result, onClick }: MemoryGridCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const [isDrawerOpen, setDrawerOpen] = useState(false);
 
   const handleClick = useCallback(() => {
     if (cardRef.current) {
@@ -126,97 +131,110 @@ export function MemoryGridCard({ result, onClick }: MemoryGridCardProps) {
     }
   }, [handleClick]);
 
+  const handleConnectionsClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    // stopPropagation is already called in ConnectionsIndicator
+    setDrawerOpen(true);
+  }, []);
+
+  const handleDrawerClose = useCallback(() => {
+    setDrawerOpen(false);
+  }, []);
+
   const title = getDisplayTitle(result);
   const description = getDisplayDescription(result);
   const classification = getClassificationLabel(result);
   const scoreIntensity = getScoreIntensity(result.finalScore);
   const relativeTime = formatRelativeTime(result.timestamp);
 
+  const hasConnections = result.type === 'node' && result.edges && result.edges.length > 0;
+
   return (
-    <div
-      ref={cardRef}
-      data-testid="memory-grid-card"
-      role="button"
-      tabIndex={0}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      className="card-brutal p-4 cursor-pointer min-h-[180px] flex flex-col"
-    >
-      {/* Header: Type, Source, Classification badges */}
-      <div className="flex items-center gap-2 flex-wrap mb-2">
-        <TypeBadge type={result.type} />
-        <SourceBadge source={result.source} />
+    <>
+      <div
+        ref={cardRef}
+        data-testid="memory-grid-card"
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        className="card-brutal p-4 cursor-pointer min-h-[180px] flex flex-col"
+      >
+        {/* Header: Type, Source, Classification badges */}
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <TypeBadge type={result.type} />
+          <SourceBadge source={result.source} />
 
-        {/* Classification badge (category for items, nodeType for nodes) */}
-        {classification && (
-          <span className={`badge-node ${result.type === 'node' && result.nodeType ? getNodeTypeBadgeClass(result.nodeType) : 'badge-concept'}`}>
-            {classification}
-          </span>
-        )}
-      </div>
-
-      {/* Relationship badges for nodes with edges (max 3) */}
-      {result.type === 'node' && result.edges && result.edges.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {result.edges.slice(0, 3).map((edge, idx) => (
-            <RelationshipBadge
-              key={idx}
-              relationship={edge.relationship}
-              targetName={edge.targetName}
-              targetNodeType={edge.targetNodeType}
-              weight={edge.weight}
-            />
-          ))}
-          {result.edges.length > 3 && (
-            <span className="text-xs text-muted font-mono">
-              +{result.edges.length - 3} more
+          {/* Classification badge (category for items, nodeType for nodes) */}
+          {classification && (
+            <span className={`badge-node ${result.type === 'node' && result.nodeType ? getNodeTypeBadgeClass(result.nodeType) : 'badge-concept'}`}>
+              {classification}
             </span>
           )}
         </div>
-      )}
 
-      {/* Title: Name for nodes, truncated content for items */}
-      <h3 className="font-mono-brutal text-sm font-bold text-ink mb-1 line-clamp-2">
-        {title}
-      </h3>
+        {/* Title: Name for nodes, truncated content for items */}
+        <h3 className="font-mono-brutal text-sm font-bold text-ink mb-1 line-clamp-2">
+          {title}
+        </h3>
 
-      {/* Description (if available) */}
-      {description && (
-        <p className="text-body text-xs text-muted line-clamp-3 flex-grow">
-          {description}
-        </p>
-      )}
+        {/* Description (if available) */}
+        {description && (
+          <p className="text-body text-xs text-muted line-clamp-3 flex-grow">
+            {description}
+          </p>
+        )}
 
-      {/* For items with short content, show full content */}
-      {result.type === 'item' && result.content.length > 60 && (
-        <p className="text-body text-xs text-muted line-clamp-3 flex-grow">
-          {truncateGridContent(result.content, 120)}
-        </p>
-      )}
+        {/* For items with short content, show full content */}
+        {result.type === 'item' && result.content.length > 60 && (
+          <p className="text-body text-xs text-muted line-clamp-3 flex-grow">
+            {truncateGridContent(result.content, 120)}
+          </p>
+        )}
 
-      {/* Spacer */}
-      {!description && result.type !== 'item' && <div className="flex-grow" />}
+        {/* Spacer */}
+        {!description && result.type !== 'item' && <div className="flex-grow" />}
 
-      {/* Footer: Score, Timestamp, Access count */}
-      <div className="mt-auto pt-3 border-t border-ink/10">
-        {/* Score bar */}
-        <div className="flex items-center gap-2 mb-2">
-          <div className={`w-16 h-1.5 ${scoreIntensity} border border-ink`} />
-          <span className="font-mono text-xs font-bold text-ink">
-            {result.finalScore.toFixed(2)}
-          </span>
-        </div>
+        {/* Footer: Score, Timestamp, Access count, Connections */}
+        <div className="mt-auto pt-3 border-t border-ink/10">
+          {/* Score bar */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`w-16 h-1.5 ${scoreIntensity} border border-ink`} />
+            <span className="font-mono text-xs font-bold text-ink">
+              {result.finalScore.toFixed(2)}
+            </span>
+          </div>
 
-        {/* Metadata row */}
-        <div className="flex items-center justify-between text-xs text-muted">
-          <span className="font-mono">{relativeTime}</span>
+          {/* Metadata row: timestamp left, connections/accessCount right */}
+          <div className="flex items-center justify-between text-xs text-muted">
+            <span className="font-mono">{relativeTime}</span>
 
-          {/* Access count for items */}
-          {result.type === 'item' && result.accessCount !== undefined && (
-            <span className="font-mono">{result.accessCount}x</span>
-          )}
+            <div className="flex items-center gap-2">
+              {/* Access count for items */}
+              {result.type === 'item' && result.accessCount !== undefined && (
+                <span className="font-mono">{result.accessCount}x</span>
+              )}
+
+              {/* Connections indicator for nodes */}
+              {hasConnections && (
+                <ConnectionsIndicator
+                  count={result.edges!.length}
+                  onClick={handleConnectionsClick}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Connections drawer (rendered outside card to avoid click propagation) */}
+      {hasConnections && (
+        <ConnectionsDrawer
+          isOpen={isDrawerOpen}
+          onClose={handleDrawerClose}
+          nodeName={result.name || title}
+          edges={result.edges!}
+        />
+      )}
+    </>
   );
 }

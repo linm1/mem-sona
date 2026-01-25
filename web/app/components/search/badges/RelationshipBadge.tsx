@@ -53,13 +53,9 @@ export function RelationshipBadge({
 }: RelationshipBadgeProps) {
   const badgeClass = getNodeTypeBadgeClass(targetNodeType);
 
-  // Opacity scales from 0.5 (low weight) to 1.0 (high weight)
-  const opacity = 0.5 + weight * 0.5;
-
   return (
     <span
       className={`badge-relationship ${badgeClass}`}
-      style={{ opacity }}
       title={`${relationship} (${Math.round(weight * 100)}% strength)`}
     >
       {relationship}: {targetName}
