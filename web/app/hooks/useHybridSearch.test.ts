@@ -225,6 +225,222 @@ describe('useHybridSearch', () => {
     });
   });
 
+  describe('hybridOnly filtering', () => {
+    it('filters to only hybrid source results when hybridOnly is true', async () => {
+      const mockResults = {
+        query: 'test query',
+        results: [
+          {
+            type: 'item' as const,
+            content: 'Vector result',
+            score: 0.9,
+            finalScore: 0.85,
+            timestamp: Date.now(),
+            source: 'vector' as const,
+          },
+          {
+            type: 'item' as const,
+            content: 'Hybrid result',
+            score: 0.8,
+            finalScore: 0.75,
+            timestamp: Date.now(),
+            source: 'hybrid' as const,
+          },
+          {
+            type: 'node' as const,
+            content: 'Graph result',
+            score: 0.7,
+            finalScore: 0.65,
+            timestamp: Date.now(),
+            source: 'graph' as const,
+          },
+        ],
+        context: '# Results',
+        executionTime: 150,
+      };
+
+      mockSearchAction.mockResolvedValue(mockResults);
+
+      const { result } = renderHook(() => useHybridSearch({ hybridOnly: true }));
+
+      await act(async () => {
+        await result.current.search('test query');
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+        expect(result.current.results).toHaveLength(1);
+        expect(result.current.results[0].source).toBe('hybrid');
+        expect(result.current.results[0].content).toBe('Hybrid result');
+      });
+    });
+
+    it('returns all results when hybridOnly is false', async () => {
+      const mockResults = {
+        query: 'test query',
+        results: [
+          {
+            type: 'item' as const,
+            content: 'Vector result',
+            score: 0.9,
+            finalScore: 0.85,
+            timestamp: Date.now(),
+            source: 'vector' as const,
+          },
+          {
+            type: 'item' as const,
+            content: 'Hybrid result',
+            score: 0.8,
+            finalScore: 0.75,
+            timestamp: Date.now(),
+            source: 'hybrid' as const,
+          },
+        ],
+        context: '# Results',
+        executionTime: 150,
+      };
+
+      mockSearchAction.mockResolvedValue(mockResults);
+
+      const { result } = renderHook(() => useHybridSearch({ hybridOnly: false }));
+
+      await act(async () => {
+        await result.current.search('test query');
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+        expect(result.current.results).toHaveLength(2);
+      });
+    });
+
+    it('returns all results when no options provided (default behavior)', async () => {
+      const mockResults = {
+        query: 'test query',
+        results: [
+          {
+            type: 'item' as const,
+            content: 'Vector result',
+            score: 0.9,
+            finalScore: 0.85,
+            timestamp: Date.now(),
+            source: 'vector' as const,
+          },
+          {
+            type: 'item' as const,
+            content: 'Hybrid result',
+            score: 0.8,
+            finalScore: 0.75,
+            timestamp: Date.now(),
+            source: 'hybrid' as const,
+          },
+        ],
+        context: '# Results',
+        executionTime: 150,
+      };
+
+      mockSearchAction.mockResolvedValue(mockResults);
+
+      const { result } = renderHook(() => useHybridSearch());
+
+      await act(async () => {
+        await result.current.search('test query');
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+        expect(result.current.results).toHaveLength(2);
+      });
+    });
+
+    it('returns empty results when hybridOnly is true and no hybrid results exist', async () => {
+      const mockResults = {
+        query: 'test query',
+        results: [
+          {
+            type: 'item' as const,
+            content: 'Vector result',
+            score: 0.9,
+            finalScore: 0.85,
+            timestamp: Date.now(),
+            source: 'vector' as const,
+          },
+          {
+            type: 'node' as const,
+            content: 'Graph result',
+            score: 0.7,
+            finalScore: 0.65,
+            timestamp: Date.now(),
+            source: 'graph' as const,
+          },
+        ],
+        context: '# Results',
+        executionTime: 150,
+      };
+
+      mockSearchAction.mockResolvedValue(mockResults);
+
+      const { result } = renderHook(() => useHybridSearch({ hybridOnly: true }));
+
+      await act(async () => {
+        await result.current.search('test query');
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+        expect(result.current.results).toHaveLength(0);
+      });
+    });
+
+    it('preserves multiple hybrid results when hybridOnly is true', async () => {
+      const mockResults = {
+        query: 'test query',
+        results: [
+          {
+            type: 'item' as const,
+            content: 'Hybrid result 1',
+            score: 0.9,
+            finalScore: 0.85,
+            timestamp: Date.now(),
+            source: 'hybrid' as const,
+          },
+          {
+            type: 'item' as const,
+            content: 'Vector result',
+            score: 0.8,
+            finalScore: 0.75,
+            timestamp: Date.now(),
+            source: 'vector' as const,
+          },
+          {
+            type: 'node' as const,
+            content: 'Hybrid result 2',
+            score: 0.7,
+            finalScore: 0.65,
+            timestamp: Date.now(),
+            source: 'hybrid' as const,
+          },
+        ],
+        context: '# Results',
+        executionTime: 150,
+      };
+
+      mockSearchAction.mockResolvedValue(mockResults);
+
+      const { result } = renderHook(() => useHybridSearch({ hybridOnly: true }));
+
+      await act(async () => {
+        await result.current.search('test query');
+      });
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+        expect(result.current.results).toHaveLength(2);
+        expect(result.current.results.every(r => r.source === 'hybrid')).toBe(true);
+      });
+    });
+  });
+
   it('handles concurrent searches correctly', async () => {
     const slowResult = {
       query: 'slow',

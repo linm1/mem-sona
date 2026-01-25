@@ -4,14 +4,33 @@ import { api } from '../../../convex/_generated/api';
 import { HybridSearchResult, MergedResult } from '../components/search/types';
 
 /**
+ * Options for useHybridSearch hook
+ */
+export interface UseHybridSearchOptions {
+  /**
+   * When true, only return results with source: "hybrid"
+   * These are results that appeared in both vector and text search,
+   * indicating higher quality/relevance.
+   * @default false
+   */
+  hybridOnly?: boolean;
+}
+
+/**
  * Custom hook for performing hybrid memory search.
  * Wraps Convex hybridSearch action with loading/error states.
  *
+ * @param options - Hook options
+ * @param options.hybridOnly - When true, only return hybrid source results
  * @returns Search state and search function
  *
  * @example
  * ```tsx
+ * // Default: return all results
  * const { results, isLoading, error, search } = useHybridSearch();
+ *
+ * // Filter to hybrid-only results (higher quality)
+ * const { results, isLoading, error, search } = useHybridSearch({ hybridOnly: true });
  *
  * // Trigger search
  * await search('What tools does mem-sona use?', 2000);
@@ -22,7 +41,8 @@ import { HybridSearchResult, MergedResult } from '../components/search/types';
  * {results.length > 0 && <MemoryList results={results} />}
  * ```
  */
-export function useHybridSearch() {
+export function useHybridSearch(options: UseHybridSearchOptions = {}) {
+  const { hybridOnly = false } = options;
   const [results, setResults] = useState<MergedResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,8 +78,13 @@ export function useHybridSearch() {
         maxTokens,
       });
 
+      // Filter results if hybridOnly is enabled
+      const filteredResults = hybridOnly
+        ? result.results.filter((r) => r.source === 'hybrid')
+        : result.results;
+
       // Update state with results
-      setResults(result.results);
+      setResults(filteredResults);
       setContext(result.context);
       setExecutionTime(result.executionTime);
       setError(null);

@@ -27,24 +27,8 @@ export interface RRFResult<T> {
   textRank?: number;
 }
 
-/** Result after time decay is applied */
-export interface DecayedResult<T> extends RRFResult<T> {
-  /** Final score after time decay: rrfScore × decayFactor */
-  finalScore: number;
-  /** Decay factor based on document age (0-1) */
-  decayFactor: number;
-  /** Age of document in days */
-  ageDays: number;
-}
-
 /** Combined result with result type indicator */
 export interface CombinedResult<T> extends RRFResult<T> {
-  /** Whether this is an item or node */
-  resultType: ResultType;
-}
-
-/** Final result after all processing */
-export interface FinalResult<T> extends DecayedResult<T> {
   /** Whether this is an item or node */
   resultType: ResultType;
 }

@@ -21,13 +21,15 @@ import { MergedResult } from '@/app/components/search/types';
  *
  * Features:
  * - Real-time hybrid search (vector + graph)
+ * - Hybrid-only filtering for higher quality results
  * - 3x3 responsive grid layout for results
  * - FLIP-animated float editor for editing memories
  * - Debounced input for performance
  * - Loading/error/empty states
  */
 export default function MemoryExplorerPage() {
-  const { results, isLoading, error, executionTime, search } = useHybridSearch();
+  // Use hybridOnly: true to show only results that appear in both vector and text search
+  const { results, isLoading, error, executionTime, search } = useHybridSearch({ hybridOnly: true });
   const editor = useMemoryEditor();
   const [lastQuery, setLastQuery] = useState('');
 
