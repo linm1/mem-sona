@@ -46,10 +46,13 @@ export class ToolHandlers {
    * - Graph search on nodes (relationship-based layer)
    * - Time-decay scoring (30-day half-life)
    * - Relevance filtering (score > 0.7)
+   *
+   * When hybridOnly is true, only returns results with source: "hybrid",
+   * which are higher-quality results that appeared in both vector and text search.
    */
   async handleMemorySearch(args: MemorySearchArgs): Promise<CallToolResult> {
     try {
-      const { query, maxTokens = 2000 } = args;
+      const { query, maxTokens = 2000, hybridOnly = false } = args;
 
       // Call Convex hybridSearch action
       const result = await this.convex.action(api.retrieval.hybridSearch, {
@@ -57,11 +60,37 @@ export class ToolHandlers {
         maxTokens,
       });
 
-      // Return formatted context (already markdown-formatted by assembleContextWindow)
+      // Filter to hybrid-only results if requested
+      let filteredResults = result.results;
+      if (hybridOnly) {
+        filteredResults = result.results.filter(
+          (r: { source: string }) => r.source === "hybrid"
+        );
+      }
+
+      // If hybridOnly and no hybrid results, return empty message
+      if (hybridOnly && filteredResults.length === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: "No relevant memories found."
+          }]
+        };
+      }
+
+      // Regenerate context from filtered results if hybridOnly is enabled
+      let contextText = result.context;
+      if (hybridOnly && filteredResults.length > 0) {
+        // Build markdown context from filtered results
+        const lines = filteredResults.map((r: { content: string }) => `- ${r.content}`);
+        contextText = `# Memory Search Results\n\n${lines.join("\n")}`;
+      }
+
+      // Return formatted context
       return {
         content: [{
           type: "text",
-          text: result.context || "No relevant memories found."
+          text: contextText || "No relevant memories found."
         }]
       };
     } catch (error: any) {

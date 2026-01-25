@@ -9,6 +9,13 @@
 export interface MemorySearchArgs {
   query: string;
   maxTokens?: number;
+  /**
+   * When true, only return results with source: "hybrid".
+   * These are results that appeared in both vector and text search,
+   * indicating higher quality/relevance.
+   * @default false
+   */
+  hybridOnly?: boolean;
 }
 
 /**
@@ -121,7 +128,8 @@ export function validateArgs<T>(
 export const validators = {
   memorySearch: (args: any): args is MemorySearchArgs => {
     return typeof args.query === "string" &&
-           (args.maxTokens === undefined || typeof args.maxTokens === "number");
+           (args.maxTokens === undefined || typeof args.maxTokens === "number") &&
+           (args.hybridOnly === undefined || typeof args.hybridOnly === "boolean");
   },
 
   memoryAddFact: (args: any): args is MemoryAddFactArgs => {

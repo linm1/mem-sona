@@ -18,6 +18,11 @@ export const TOOL_DEFINITIONS = [
           type: "number",
           description: "Maximum tokens in response (optional, default: 2000)",
           default: 2000
+        },
+        hybridOnly: {
+          type: "boolean",
+          description: "When true, only return results that appeared in both vector and text search (higher quality). Default: false",
+          default: false
         }
       },
       required: ["query"]
