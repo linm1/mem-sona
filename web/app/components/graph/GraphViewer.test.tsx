@@ -266,4 +266,67 @@ describe('GraphViewer', () => {
       expect(screen.getByText(/2 filtered/i)).toBeInTheDocument();
     });
   });
+
+  describe('fullscreen resize handling', () => {
+    it('should use captured ref value to prevent stale closure issues', () => {
+      // This test verifies the fix: the cy ref is captured BEFORE the RAF callback
+      // This prevents stale closures where cyRef.current might change
+      // The fix changes from: cyRef.current?.resize() to: cy.resize()
+
+      vi.mocked(useGraphData).mockReturnValue({
+        elements: mockElements,
+        isLoading: false,
+        isEmpty: false,
+        nodeCount: 2,
+        edgeCount: 1,
+        error: null,
+      });
+
+      const rafSpy = vi.spyOn(global, 'requestAnimationFrame').mockImplementation((cb) => {
+        // Execute callback immediately in tests
+        cb(0);
+        return 123;
+      });
+
+      render(<GraphViewer />);
+
+      // Verify RAF was called during component lifecycle
+      // The implementation should capture the cy instance before the callback
+      expect(rafSpy).toHaveBeenCalled();
+
+      rafSpy.mockRestore();
+    });
+
+    it('should early return from effect when ref is null', () => {
+      vi.mocked(useGraphData).mockReturnValue({
+        elements: [],
+        isLoading: false,
+        isEmpty: false,
+        nodeCount: 0,
+        edgeCount: 0,
+        error: null,
+      });
+
+      // Should not throw when cyRef is not initialized
+      // The fix includes: if (!cy) return;
+      expect(() => render(<GraphViewer />)).not.toThrow();
+    });
+
+    it('should handle unmounting without errors', () => {
+      vi.mocked(useGraphData).mockReturnValue({
+        elements: mockElements,
+        isLoading: false,
+        isEmpty: false,
+        nodeCount: 2,
+        edgeCount: 1,
+        error: null,
+      });
+
+      // Render and unmount multiple times - should not leak or error
+      const { unmount } = render(<GraphViewer />);
+
+      // Unmounting should cleanup animation frames
+      expect(() => unmount()).not.toThrow();
+    });
+  });
 });

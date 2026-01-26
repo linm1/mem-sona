@@ -190,20 +190,15 @@ export function GraphViewer({
 
   // Resize Cytoscape when fullscreen changes
   useEffect(() => {
-    let frameId: number | null = null;
+    const cy = cyRef.current;
+    if (!cy) return;
 
-    if (cyRef.current) {
-      frameId = requestAnimationFrame(() => {
-        cyRef.current?.resize();
-        cyRef.current?.fit(undefined, 50);
-      });
-    }
+    const frameId = requestAnimationFrame(() => {
+      cy.resize();
+      cy.fit(undefined, 50);
+    });
 
-    return () => {
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-      }
-    };
+    return () => cancelAnimationFrame(frameId);
   }, [isFullscreen]);
 
   // Update refs when handlers change
