@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import cytoscape, { Core } from 'cytoscape';
 import { useGraphData } from './useGraphData';
 import { generateCytoscapeStylesheet } from './graphStyles';
@@ -9,8 +9,11 @@ import { GraphControls, type DepthLevel } from './GraphControls';
 import { NodeTooltip } from './NodeTooltip';
 import { NodeInfoPanel } from './NodeInfoPanel';
 import { GraphLoadingState, GraphEmptyState, GraphErrorState } from './GraphStates';
+import { GraphEditorFloat } from './GraphEditorFloat';
 import { applyDepthFilter, clearDepthFilter } from './depthFilter';
 import { applySearchFilter } from './searchFilter';
+import { useGraphEditor } from '../../hooks/useGraphEditor';
+import type { Doc } from '../../../convex/_generated/dataModel';
 import type {
   GraphViewerProps,
   TooltipNodeData,
@@ -35,6 +38,7 @@ import type {
 export function GraphViewer({
   className = '',
   onNodeClick,
+  onEdgeClick,
   nodeTypeFilter,
   relationshipFilter,
   filteredNodeIds,
@@ -64,6 +68,9 @@ export function GraphViewer({
 
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Editor state
+  const editor = useGraphEditor();
 
   // Store callbacks in refs to avoid re-creating event handlers
   const onNodeClickRef = useRef(onNodeClick);
@@ -176,6 +183,94 @@ export function GraphViewer({
     setIsFullscreen((prev) => !prev);
   }, []);
 
+  /**
+   * Resolve edge position with fallback for undefined positions.
+   * Returns centered fallback when Cytoscape position is unavailable.
+   */
+  const resolveEdgePosition = useCallback(
+    (position: { x: number; y: number } | undefined): DOMRect => {
+      // Check if position is valid
+      if (
+        !position ||
+        typeof position.x !== 'number' ||
+        typeof position.y !== 'number' ||
+        isNaN(position.x) ||
+        isNaN(position.y)
+      ) {
+        // Fallback: Use centered position when edge position unavailable
+        const centerX =
+          typeof window !== 'undefined' ? window.innerWidth / 2 : 512;
+        const centerY =
+          typeof window !== 'undefined' ? window.innerHeight / 2 : 384;
+        return new DOMRect(centerX, centerY, 100, 50);
+      }
+      return new DOMRect(position.x, position.y, 100, 50);
+    },
+    []
+  );
+
+  /**
+   * Handle edit edge - open editor with edge data.
+   */
+  const handleEditEdge = useCallback(
+    (edgeId: string) => {
+      if (!cyRef.current) return;
+
+      const edge = cyRef.current.getElementById(edgeId);
+      if (!edge.length) return;
+
+      // Get the edge's DOM position for FLIP animation
+      const position = edge.renderedPosition();
+      const rect = resolveEdgePosition(position);
+
+      // Open editor with edge
+      editor.open('edge', edgeId, rect);
+    },
+    [editor, resolveEdgePosition]
+  );
+
+  /**
+   * Handle archive edge.
+   */
+  const handleArchiveEdge = useCallback(
+    (edgeId: string) => {
+      if (!cyRef.current) return;
+
+      const edge = cyRef.current.getElementById(edgeId);
+      if (!edge.length) return;
+
+      // Get the edge's DOM position for FLIP animation
+      const position = edge.renderedPosition();
+      const rect = resolveEdgePosition(position);
+
+      // Open editor with edge then trigger archive
+      editor.open('edge', edgeId, rect);
+      // Note: User will click archive button in the editor UI
+    },
+    [editor, resolveEdgePosition]
+  );
+
+  /**
+   * Resolve node names for edge editor.
+   * Uses Cytoscape data to get node labels.
+   */
+  const resolvedNodeNames = useMemo(() => {
+    if (!cyRef.current || !editor.entity || editor.entityType !== 'edge') {
+      return { fromNodeName: null, toNodeName: null };
+    }
+
+    const edgeEntity = editor.entity as Doc<'graphEdges'>;
+    const cy = cyRef.current;
+
+    const fromNode = cy.getElementById(edgeEntity.fromNode as string);
+    const toNode = cy.getElementById(edgeEntity.toNode as string);
+
+    return {
+      fromNodeName: fromNode.length ? fromNode.data('label') : null,
+      toNodeName: toNode.length ? toNode.data('label') : null,
+    };
+  }, [editor.entity, editor.entityType]);
+
   // Handle ESC key to exit fullscreen
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -255,6 +350,12 @@ export function GraphViewer({
     cy.on('tap', 'node', (event) => {
       const nodeId = event.target.id();
       handleNodeSelectRef.current?.(nodeId);
+    });
+
+    // Edge click - trigger edge click callback
+    cy.on('tap', 'edge', (event) => {
+      const edgeId = event.target.id();
+      onEdgeClick?.(edgeId);
     });
 
     // Click on background - close info panel
@@ -429,8 +530,25 @@ export function GraphViewer({
           description={selectedNode.description}
           edges={selectedNode.edges}
           onClose={handleCloseInfoPanel}
+          onEditEdge={handleEditEdge}
+          onArchiveEdge={handleArchiveEdge}
         />
       )}
+
+      {/* Graph editor float (for editing nodes and edges) */}
+      <GraphEditorFloat
+        isOpen={editor.isOpen}
+        entity={editor.entity}
+        entityType={editor.entityType}
+        sourceRect={editor.sourceRect}
+        isLoading={editor.isLoading}
+        error={editor.error}
+        fromNodeName={resolvedNodeNames.fromNodeName}
+        toNodeName={resolvedNodeNames.toNodeName}
+        onSave={editor.save}
+        onArchive={editor.archive}
+        onClose={editor.close}
+      />
 
       {/* Fullscreen exit hint */}
       {isFullscreen && (

@@ -19,6 +19,10 @@ interface NodeInfoPanelProps {
   edges: ConnectedEdge[];
   /** Callback to close the panel */
   onClose: () => void;
+  /** Optional callback to edit an edge */
+  onEditEdge?: (edgeId: string) => void;
+  /** Optional callback to archive/delete an edge */
+  onArchiveEdge?: (edgeId: string) => void;
 }
 
 /**
@@ -43,6 +47,8 @@ export function NodeInfoPanel({
   description,
   edges,
   onClose,
+  onEditEdge,
+  onArchiveEdge,
 }: NodeInfoPanelProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -128,11 +134,21 @@ export function NodeInfoPanel({
           <div className="space-y-2 max-h-32 overflow-y-auto">
             {/* Outgoing edges */}
             {outgoingEdges.map((edge) => (
-              <EdgeItem key={edge.id} edge={edge} />
+              <EdgeItem
+                key={edge.id}
+                edge={edge}
+                onEdit={onEditEdge}
+                onArchive={onArchiveEdge}
+              />
             ))}
             {/* Incoming edges */}
             {incomingEdges.map((edge) => (
-              <EdgeItem key={edge.id} edge={edge} />
+              <EdgeItem
+                key={edge.id}
+                edge={edge}
+                onEdit={onEditEdge}
+                onArchive={onArchiveEdge}
+              />
             ))}
           </div>
         </details>
@@ -149,15 +165,30 @@ export function NodeInfoPanel({
 /**
  * Individual edge item in the connections list.
  */
-function EdgeItem({ edge }: { edge: ConnectedEdge }) {
+function EdgeItem({
+  edge,
+  onEdit,
+  onArchive,
+}: {
+  edge: ConnectedEdge;
+  onEdit?: (edgeId: string) => void;
+  onArchive?: (edgeId: string) => void;
+}) {
   const arrow = edge.direction === 'outgoing' ? '→' : '←';
   const relationshipLabel =
     edge.direction === 'outgoing'
       ? edge.relationship
       : `${edge.relationship} (by)`;
 
+  const showActions = onEdit || onArchive;
+
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div
+      data-testid="edge-item"
+      className={`flex items-center gap-2 text-xs ${
+        showActions ? 'hover:bg-muted hover:bg-opacity-10 p-1 -mx-1 rounded transition-colors' : ''
+      }`}
+    >
       <span className="text-muted">{arrow}</span>
       <span className="font-mono text-accent">{relationshipLabel}</span>
       <span className="text-muted">{arrow}</span>
@@ -169,6 +200,34 @@ function EdgeItem({ edge }: { edge: ConnectedEdge }) {
       </span>
       {edge.status !== 'active' && (
         <span className="text-muted italic">({edge.status})</span>
+      )}
+
+      {/* Action buttons (only shown if callbacks provided) */}
+      {showActions && (
+        <div className="ml-auto flex gap-1">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(edge.id)}
+              className="p-0.5 hover:text-highlight transition-colors"
+              aria-label="Edit connection"
+              title="Edit"
+            >
+              <EditIcon />
+            </button>
+          )}
+          {onArchive && (
+            <button
+              type="button"
+              onClick={() => onArchive(edge.id)}
+              className="p-0.5 hover:text-red-500 transition-colors"
+              aria-label="Delete connection"
+              title="Delete"
+            >
+              <DeleteIcon />
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -190,6 +249,49 @@ function CloseIcon() {
       strokeLinejoin="round"
     >
       <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+/**
+ * Edit icon (pencil).
+ */
+function EditIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </svg>
+  );
+}
+
+/**
+ * Delete icon (trash).
+ */
+function DeleteIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
     </svg>
   );
 }

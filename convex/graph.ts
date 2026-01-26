@@ -1018,6 +1018,81 @@ export const updateEdgeWeight = mutation({
 });
 
 /**
+ * Update edge properties (relationship, weight, context).
+ * Allows partial updates - only provided fields are modified.
+ * Uses immutable pattern to preserve existing properties.
+ *
+ * @param edgeId - Edge ID to update
+ * @param relationship - Optional new relationship type
+ * @param weight - Optional new weight value (0.0 - 1.0)
+ * @param context - Optional new context string
+ * @returns Updated edge
+ */
+export const updateEdge = mutation({
+  args: {
+    edgeId: v.id("graphEdges"),
+    relationship: v.optional(v.string()),
+    weight: v.optional(v.number()),
+    context: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Doc<"graphEdges">> => {
+    // Validate at least one field is provided
+    if (
+      args.relationship === undefined &&
+      args.weight === undefined &&
+      args.context === undefined
+    ) {
+      throw new Error("Must provide at least one field to update (relationship, weight, or context)");
+    }
+
+    // Validate weight range if provided
+    if (args.weight !== undefined && (args.weight < 0.0 || args.weight > 1.0)) {
+      throw new Error(`Weight must be between 0.0 and 1.0, got: ${args.weight}`);
+    }
+
+    // Check edge exists
+    const edge = await ctx.db.get(args.edgeId);
+    if (!edge) {
+      throw new Error(`Edge not found: ${args.edgeId}`);
+    }
+
+    // Build update object (immutable pattern)
+    const updates: Partial<Doc<"graphEdges">> = {
+      updatedAt: Date.now(),
+    };
+
+    // Update relationship if provided
+    if (args.relationship !== undefined) {
+      updates.relationship = args.relationship;
+    }
+
+    // Update weight if provided
+    if (args.weight !== undefined) {
+      updates.weight = args.weight;
+    }
+
+    // Update context if provided (preserve 'since' property)
+    if (args.context !== undefined) {
+      updates.properties = {
+        ...edge.properties,
+        context: args.context,
+      };
+    }
+
+    // Apply updates
+    await ctx.db.patch(args.edgeId, updates);
+
+    // Fetch and return updated edge
+    const updatedEdge = await ctx.db.get(args.edgeId);
+    if (!updatedEdge) {
+      throw new Error("Failed to retrieve updated edge");
+    }
+
+    return updatedEdge;
+  },
+});
+
+/**
  * Strengthen an edge by increasing its weight.
  * Weight is capped at 1.0.
  *

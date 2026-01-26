@@ -7,6 +7,7 @@ export {
   GraphEmptyState,
   GraphErrorState,
 } from './GraphStates';
+export { GraphEditorFloat } from './GraphEditorFloat';
 
 // Hooks
 export { useGraphData } from './useGraphData';

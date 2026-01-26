@@ -88,6 +88,8 @@ export interface GraphViewerProps {
   className?: string;
   /** Callback when a node is clicked */
   onNodeClick?: (nodeId: string) => void;
+  /** Callback when an edge is clicked */
+  onEdgeClick?: (edgeId: string) => void;
   /** Optional filter by node type */
   nodeTypeFilter?: NodeType;
   /** Optional filter by relationship */
@@ -168,3 +170,38 @@ export interface SelectedNodeData {
   description?: string;
   edges: ConnectedEdge[];
 }
+
+/**
+ * Callback function signature for editing an edge.
+ */
+export type EdgeEditCallback = (
+  edgeId: string,
+  relationship: string,
+  weight: number,
+  context?: string
+) => void;
+
+/**
+ * Callback function signature for archiving/deleting an edge.
+ */
+export type EdgeArchiveCallback = (edgeId: string) => void;
+
+/**
+ * Valid relationship types in the knowledge graph.
+ * Matches the allowed relationship types in the backend.
+ */
+export const RELATIONSHIP_TYPES = [
+  'uses',
+  'requires',
+  'knows',
+  'works_on',
+  'uses_tool',
+  'requires_skill',
+  'works_at',
+  'primary_language',
+] as const;
+
+/**
+ * Union type of all valid relationship types.
+ */
+export type RelationshipType = typeof RELATIONSHIP_TYPES[number];
