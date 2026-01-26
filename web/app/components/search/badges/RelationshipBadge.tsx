@@ -3,6 +3,8 @@
  * Shows the relationship type and target node name with color coding
  */
 
+import { getNodeTypeBadgeClass } from '@/app/utils/nodeTypes';
+
 interface RelationshipBadgeProps {
   /** Relationship type (e.g., "uses", "requires", "knows") */
   relationship: string;
@@ -12,24 +14,6 @@ interface RelationshipBadgeProps {
   targetNodeType: string;
   /** Relationship strength/confidence (0-1) */
   weight: number;
-}
-
-/**
- * Get badge class based on target node type
- */
-function getNodeTypeBadgeClass(nodeType: string): string {
-  switch (nodeType) {
-    case 'project':
-      return 'badge-project';
-    case 'tool':
-      return 'badge-tool';
-    case 'skill':
-      return 'badge-skill';
-    case 'concept':
-      return 'badge-concept';
-    default:
-      return 'badge-concept';
-  }
 }
 
 /**

@@ -365,11 +365,11 @@ export class ToolHandlers {
       // Call Convex graph.upsertEdge action
       const result = await this.convex.action(api.graph.upsertEdge, {
         fromName: fromEntity,
-        fromType: fromType,
+        fromType,
         toName: toEntity,
-        toType: toType,
-        relationship: relationship,
-        context: context,
+        toType,
+        relationship,
+        context,
       });
 
       // Format response based on action taken

@@ -311,7 +311,6 @@ export function calculateTimeDecay(timestamp: number): number {
  * NOTE: Delegates to djb2Hash from utils/hybridSearch.ts for consistency.
  * The format differs slightly (no padding) but hash values are consistent.
  *
- * @deprecated Use djb2Hash from utils/hybridSearch.ts directly
  * @param content - Text content to hash
  * @returns Deterministic hash string
  */

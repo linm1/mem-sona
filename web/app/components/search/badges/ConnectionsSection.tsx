@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { NODE_TYPE_COLORS } from '@/app/utils/nodeTypes';
+import { pluralize, getTypeCounts, type Edge } from '@/app/utils/text';
 
 /**
  * ConnectionsSection component - collapsible list of node connections
@@ -10,17 +12,6 @@ import type { ReactNode } from 'react';
  * - List of connections with arrows and colored target badges
  */
 
-export interface Edge {
-  /** Relationship type (e.g., "uses", "requires", "follows") */
-  relationship: string;
-  /** Name of the target node */
-  targetName: string;
-  /** Type of target node (project, tool, skill, concept) */
-  targetNodeType: string;
-  /** Relationship strength/confidence (0-1) */
-  weight: number;
-}
-
 export interface ConnectionsSectionProps {
   /** List of edges/connections to display */
   edges: Edge[];
@@ -29,47 +20,10 @@ export interface ConnectionsSectionProps {
 }
 
 /**
- * Type badge background color mapping (matches NodeInfoPanel)
- */
-const TYPE_COLORS: Record<string, string> = {
-  project: 'bg-highlight text-paper',
-  tool: 'bg-muted text-paper',
-  skill: 'bg-accent text-paper',
-  concept: 'bg-ink text-paper',
-};
-
-/**
- * Calculate counts by node type
- */
-function getTypeCounts(edges: Edge[]): Record<string, number> {
-  return edges.reduce(
-    (acc, edge) => {
-      const type = edge.targetNodeType;
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-}
-
-/**
- * Pluralize a word based on count
- */
-function pluralize(word: string, count: number): string {
-  if (count === 1) return word;
-  // Handle special pluralization
-  if (word === 'skill') return 'skills';
-  if (word === 'tool') return 'tools';
-  if (word === 'project') return 'projects';
-  if (word === 'concept') return 'concepts';
-  return `${word}s`;
-}
-
-/**
  * Individual edge item in the connections list
  */
 function EdgeItem({ edge }: { edge: Edge }) {
-  const colorClass = TYPE_COLORS[edge.targetNodeType] || TYPE_COLORS.concept;
+  const colorClass = NODE_TYPE_COLORS[edge.targetNodeType] || NODE_TYPE_COLORS.concept;
 
   return (
     <div className="flex items-center gap-2 text-xs">

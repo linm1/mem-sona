@@ -1,20 +1,8 @@
 'use client';
 
 import { useEffect, useRef, type MouseEvent, type KeyboardEvent, type ReactNode } from 'react';
-
-/**
- * Edge data for connections
- */
-export interface Edge {
-  /** Relationship type (e.g., "uses", "requires", "follows") */
-  relationship: string;
-  /** Name of the target node */
-  targetName: string;
-  /** Type of target node (project, tool, skill, concept) */
-  targetNodeType: string;
-  /** Relationship strength/confidence (0-1) */
-  weight: number;
-}
+import { EdgeItem, type Edge } from '@/app/components/shared/EdgeItem';
+import { pluralize, getTypeCounts } from '@/app/utils/text';
 
 /**
  * Props for ConnectionsDrawer component
@@ -41,16 +29,6 @@ export interface ConnectionsIndicatorProps {
 }
 
 /**
- * Type badge background color mapping
- */
-const TYPE_COLORS: Record<string, string> = {
-  project: 'bg-highlight text-paper',
-  tool: 'bg-muted text-paper',
-  skill: 'bg-accent text-paper',
-  concept: 'bg-ink text-paper',
-};
-
-/**
  * Type count text color mapping
  */
 const TYPE_TEXT_COLORS: Record<string, string> = {
@@ -59,32 +37,6 @@ const TYPE_TEXT_COLORS: Record<string, string> = {
   skill: 'text-accent',
   concept: 'text-muted',
 };
-
-/**
- * Calculate counts by node type
- */
-function getTypeCounts(edges: Edge[]): Record<string, number> {
-  return edges.reduce(
-    (acc, edge) => {
-      const type = edge.targetNodeType;
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-}
-
-/**
- * Pluralize a word based on count
- */
-function pluralize(word: string, count: number): string {
-  if (count === 1) return word;
-  if (word === 'skill') return 'skills';
-  if (word === 'tool') return 'tools';
-  if (word === 'project') return 'projects';
-  if (word === 'concept') return 'concepts';
-  return `${word}s`;
-}
 
 /**
  * Link icon SVG
@@ -127,26 +79,6 @@ function CloseIcon() {
   );
 }
 
-/**
- * Individual edge item in the connections list
- */
-function EdgeItem({ edge }: { edge: Edge }) {
-  const colorClass = TYPE_COLORS[edge.targetNodeType] || TYPE_COLORS.concept;
-
-  return (
-    <div className="flex items-center gap-2 text-xs py-1">
-      <span className="text-muted">→</span>
-      <span className="font-mono text-accent min-w-[80px]">{edge.relationship}</span>
-      <span className="text-muted">→</span>
-      <span
-        className={`px-1.5 py-0.5 border border-ink font-mono uppercase ${colorClass}`}
-        style={{ fontSize: '10px' }}
-      >
-        {edge.targetName}
-      </span>
-    </div>
-  );
-}
 
 /**
  * Compact connection indicator (icon + count) for memory cards
@@ -252,10 +184,9 @@ export function ConnectionsDrawer({
         <div className="p-4 overflow-y-auto max-h-[calc(50vh-80px)]">
           <div className="space-y-1">
             {edges.map((edge, idx) => (
-              <EdgeItem
-                key={`${edge.relationship}-${edge.targetName}-${idx}`}
-                edge={edge}
-              />
+              <div key={`${edge.relationship}-${edge.targetName}-${idx}`} className="py-1">
+                <EdgeItem edge={edge} variant="default" />
+              </div>
             ))}
           </div>
         </div>

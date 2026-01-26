@@ -11,7 +11,7 @@ export interface UseHybridSearchOptions {
    * When true, only return results with source: "hybrid"
    * These are results that appeared in both vector and text search,
    * indicating higher quality/relevance.
-   * @default false
+   * @default true
    */
   hybridOnly?: boolean;
 }
@@ -26,11 +26,11 @@ export interface UseHybridSearchOptions {
  *
  * @example
  * ```tsx
- * // Default: return all results
+ * // Default: return hybrid-only results (higher quality)
  * const { results, isLoading, error, search } = useHybridSearch();
  *
- * // Filter to hybrid-only results (higher quality)
- * const { results, isLoading, error, search } = useHybridSearch({ hybridOnly: true });
+ * // Return all results (including vector-only and text-only)
+ * const { results, isLoading, error, search } = useHybridSearch({ hybridOnly: false });
  *
  * // Trigger search
  * await search('What tools does mem-sona use?', 2000);
@@ -42,7 +42,7 @@ export interface UseHybridSearchOptions {
  * ```
  */
 export function useHybridSearch(options: UseHybridSearchOptions = {}) {
-  const { hybridOnly = false } = options;
+  const { hybridOnly = true } = options;
   const [results, setResults] = useState<MergedResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

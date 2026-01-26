@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, KeyboardEvent, MouseEvent } from 'react'
 import { MergedResult } from '../search/types';
 import { TypeBadge, SourceBadge } from '../search/badges';
 import { formatRelativeTime, getScoreIntensity } from '../../utils/formatters';
+import { getNodeTypeBadgeClass } from '../../utils/nodeTypes';
 import { ConnectionsIndicator, ConnectionsDrawer } from './ConnectionsDrawer';
 
 /**
@@ -73,24 +74,6 @@ function getClassificationLabel(result: MergedResult): string | null {
 }
 
 /**
- * Get the badge class for node type
- */
-function getNodeTypeBadgeClass(nodeType: string): string {
-  switch (nodeType) {
-    case 'project':
-      return 'badge-project';
-    case 'tool':
-      return 'badge-tool';
-    case 'skill':
-      return 'badge-skill';
-    case 'concept':
-      return 'badge-concept';
-    default:
-      return 'badge-concept';
-  }
-}
-
-/**
  * MemoryGridCard component - compact card for 3x3 grid display
  *
  * Displays memory search results in a clickable card format.
@@ -131,7 +114,7 @@ export function MemoryGridCard({ result, onClick }: MemoryGridCardProps) {
     }
   }, [handleClick]);
 
-  const handleConnectionsClick = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+  const handleConnectionsClick = useCallback(() => {
     // stopPropagation is already called in ConnectionsIndicator
     setDrawerOpen(true);
   }, []);
