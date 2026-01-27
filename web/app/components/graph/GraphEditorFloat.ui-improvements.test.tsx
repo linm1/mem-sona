@@ -4,11 +4,23 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GraphEditorFloat } from './GraphEditorFloat';
 import type { Doc } from '../../../convex/_generated/dataModel';
 
+// Mock ConnectionBeam component since it uses complex SVG animations
+vi.mock('../shared/ConnectionBeam', () => ({
+  ConnectionBeam: vi.fn(({ isArchived }) => (
+    <div
+      data-testid="connection-beam-mock"
+      data-is-archived={isArchived ? 'true' : 'false'}
+    >
+      Connection Beam
+    </div>
+  )),
+}));
+
 /**
  * Tests for GraphEditorFloat UI improvements:
  * 1. Node color themes applied to from/to badges
  * 2. Horizontal layout for from/to nodes
- * 3. Visual connection line indicator (solid/dashed based on status)
+ * 3. Animated connection beam indicator (opacity based on status)
  */
 describe('GraphEditorFloat - UI Improvements', () => {
   // Mock edge entity with active status
@@ -131,28 +143,31 @@ describe('GraphEditorFloat - UI Improvements', () => {
       expect(container).toHaveClass('flex', 'items-center');
     });
 
-    it('should display from node, connection line, and to node in order', () => {
-      const { container } = render(<GraphEditorFloat {...defaultProps} />);
+    it('should display from node, spacer, to node, and connection beam in container', () => {
+      render(<GraphEditorFloat {...defaultProps} />);
 
       const nodesContainer = screen.getByTestId('edge-nodes-container');
       const children = Array.from(nodesContainer.children);
 
-      // Should have exactly 3 children: from badge, connection line, to badge
-      expect(children).toHaveLength(3);
+      // Should have 4 children: from badge, spacer, to badge, connection beam
+      expect(children).toHaveLength(4);
 
       // First child should be from node badge
       expect(children[0]).toHaveAttribute('data-testid', 'edge-from-node-badge');
 
-      // Second child should be connection line
+      // Second child should be spacer
       expect(children[1]).toHaveAttribute('data-testid', 'edge-connection-line');
 
       // Third child should be to node badge
       expect(children[2]).toHaveAttribute('data-testid', 'edge-to-node-badge');
+
+      // Fourth child should be connection beam
+      expect(children[3]).toHaveAttribute('data-testid', 'connection-beam-mock');
     });
   });
 
-  describe('Visual Connection Line Indicator', () => {
-    it('should display solid connection line for active edges', () => {
+  describe('Animated Connection Beam Indicator', () => {
+    it('should render connection beam for active edges with isArchived=false', () => {
       render(
         <GraphEditorFloat
           {...defaultProps}
@@ -160,13 +175,12 @@ describe('GraphEditorFloat - UI Improvements', () => {
         />
       );
 
-      const connectionLine = screen.getByTestId('edge-connection-line');
-      expect(connectionLine).toBeInTheDocument();
-      // Should NOT have dashed border (solid is default)
-      expect(connectionLine).not.toHaveClass('border-dashed');
+      const connectionBeam = screen.getByTestId('connection-beam-mock');
+      expect(connectionBeam).toBeInTheDocument();
+      expect(connectionBeam).toHaveAttribute('data-is-archived', 'false');
     });
 
-    it('should display dashed connection line for archived edges', () => {
+    it('should render connection beam for archived edges with isArchived=true', () => {
       render(
         <GraphEditorFloat
           {...defaultProps}
@@ -174,9 +188,9 @@ describe('GraphEditorFloat - UI Improvements', () => {
         />
       );
 
-      const connectionLine = screen.getByTestId('edge-connection-line');
-      expect(connectionLine).toBeInTheDocument();
-      expect(connectionLine).toHaveClass('border-dashed');
+      const connectionBeam = screen.getByTestId('connection-beam-mock');
+      expect(connectionBeam).toBeInTheDocument();
+      expect(connectionBeam).toHaveAttribute('data-is-archived', 'true');
     });
 
     it('should not display standalone status badge field', () => {
@@ -186,20 +200,20 @@ describe('GraphEditorFloat - UI Improvements', () => {
       expect(screen.queryByText(/^Status$/i)).not.toBeInTheDocument();
     });
 
-    it('should display connection line with arrow indicating direction', () => {
+    it('should include spacer element for beam path', () => {
       render(<GraphEditorFloat {...defaultProps} />);
 
-      const connectionLine = screen.getByTestId('edge-connection-line');
-      // Should contain an arrow or directional indicator
-      expect(connectionLine).toHaveTextContent('→');
+      const spacer = screen.getByTestId('edge-connection-line');
+      // Spacer should be present for beam positioning
+      expect(spacer).toBeInTheDocument();
     });
 
-    it('should apply proper spacing between badges and connection line', () => {
+    it('should apply proper spacing between badges', () => {
       render(<GraphEditorFloat {...defaultProps} />);
 
       const container = screen.getByTestId('edge-nodes-container');
       // Should have gap classes for spacing
-      expect(container).toHaveClass('gap-2');
+      expect(container).toHaveClass('gap-4');
     });
   });
 

@@ -16,6 +16,7 @@ import type {
 import { RELATIONSHIP_TYPES } from './types';
 import type { NodeType } from './types';
 import { NODE_TYPE_COLORS } from '../../utils/nodeTypes';
+import { ConnectionBeam } from '../shared/ConnectionBeam';
 
 /**
  * Props for GraphEditorFloat component
@@ -107,6 +108,11 @@ export function GraphEditorFloat({
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFocusableRef = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
   const titleId = 'graph-editor-title';
+
+  // Refs for connection beam animation
+  const connectionContainerRef = useRef<HTMLDivElement>(null);
+  const fromNodeRef = useRef<HTMLSpanElement>(null);
+  const toNodeRef = useRef<HTMLSpanElement>(null);
 
   // Initialize form state when entity changes
   useEffect(() => {
@@ -359,19 +365,21 @@ export function GraphEditorFloat({
             {/* Edge Fields */}
             {!isNode && edgeEntity && (
               <>
-                {/* Nodes Connection Display (Horizontal Layout) */}
+                {/* Nodes Connection Display (Horizontal Layout with Animated Beam) */}
                 <div>
                   <label className="block font-mono uppercase tracking-wide text-xs text-muted mb-2">
                     Connection
                   </label>
                   <div
+                    ref={connectionContainerRef}
                     data-testid="edge-nodes-container"
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-4 relative py-2"
                   >
                     {/* From Node Badge */}
                     <span
+                      ref={fromNodeRef}
                       data-testid="edge-from-node-badge"
-                      className={`inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm ${
+                      className={`inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm z-10 ${
                         fromNodeType
                           ? NODE_TYPE_COLORS[fromNodeType]
                           : 'bg-muted text-paper'
@@ -380,22 +388,18 @@ export function GraphEditorFloat({
                       {fromNodeName || edgeEntity.fromNode}
                     </span>
 
-                    {/* Connection Line Indicator */}
+                    {/* Spacer for beam path */}
                     <div
                       data-testid="edge-connection-line"
-                      className={`flex-1 min-w-[40px] border-t-2 border-ink ${
-                        edgeEntity.status === 'archived' ? 'border-dashed' : ''
-                      } relative`}
-                    >
-                      <span className="absolute top-1/2 right-0 transform -translate-y-1/2 text-ink font-mono text-sm">
-                        →
-                      </span>
-                    </div>
+                      className="flex-1 min-w-[60px] h-px"
+                      aria-hidden="true"
+                    />
 
                     {/* To Node Badge */}
                     <span
+                      ref={toNodeRef}
                       data-testid="edge-to-node-badge"
-                      className={`inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm ${
+                      className={`inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm z-10 ${
                         toNodeType
                           ? NODE_TYPE_COLORS[toNodeType]
                           : 'bg-muted text-paper'
@@ -403,6 +407,14 @@ export function GraphEditorFloat({
                     >
                       {toNodeName || edgeEntity.toNode}
                     </span>
+
+                    {/* Animated Connection Beam */}
+                    <ConnectionBeam
+                      containerRef={connectionContainerRef}
+                      fromRef={fromNodeRef}
+                      toRef={toNodeRef}
+                      isArchived={edgeEntity.status === 'archived'}
+                    />
                   </div>
                 </div>
 

@@ -5,6 +5,18 @@ import { GraphEditorFloat } from './GraphEditorFloat';
 import type { Doc } from '../../../convex/_generated/dataModel';
 import type { EntityType } from '../../hooks/useGraphEditor';
 
+// Mock ConnectionBeam component since it uses complex SVG animations
+vi.mock('../shared/ConnectionBeam', () => ({
+  ConnectionBeam: vi.fn(({ isArchived }) => (
+    <div
+      data-testid="connection-beam-mock"
+      data-is-archived={isArchived ? 'true' : 'false'}
+    >
+      Connection Beam
+    </div>
+  )),
+}));
+
 /**
  * Tests for GraphEditorFloat component
  */
@@ -266,7 +278,7 @@ describe('GraphEditorFloat', () => {
       expect(contextInput).toHaveValue('Updated context');
     });
 
-    it('should display status visually via connection line style', () => {
+    it('should display status visually via animated connection beam', () => {
       render(
         <GraphEditorFloat
           {...defaultProps}
@@ -276,11 +288,26 @@ describe('GraphEditorFloat', () => {
           toNodeName="Target Node"
         />
       );
-      // Status is now shown via connection line (solid for active, dashed for archived)
-      const connectionLine = screen.getByTestId('edge-connection-line');
-      expect(connectionLine).toBeInTheDocument();
-      // Active status = solid line (no dashed class)
-      expect(connectionLine).not.toHaveClass('border-dashed');
+      // Status is now shown via animated connection beam
+      const connectionBeam = screen.getByTestId('connection-beam-mock');
+      expect(connectionBeam).toBeInTheDocument();
+      // Active status = isArchived false
+      expect(connectionBeam).toHaveAttribute('data-is-archived', 'false');
+    });
+
+    it('should pass isArchived=true to ConnectionBeam for archived edges', () => {
+      const archivedEdge = { ...mockEdge, status: 'archived' as const };
+      render(
+        <GraphEditorFloat
+          {...defaultProps}
+          entity={archivedEdge}
+          entityType="edge"
+          fromNodeName="Source Node"
+          toNodeName="Target Node"
+        />
+      );
+      const connectionBeam = screen.getByTestId('connection-beam-mock');
+      expect(connectionBeam).toHaveAttribute('data-is-archived', 'true');
     });
 
     it('should call onSave with updated edge data', async () => {
