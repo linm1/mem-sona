@@ -266,7 +266,7 @@ describe('GraphEditorFloat', () => {
       expect(contextInput).toHaveValue('Updated context');
     });
 
-    it('should display status as read-only badge', () => {
+    it('should display status visually via connection line style', () => {
       render(
         <GraphEditorFloat
           {...defaultProps}
@@ -276,7 +276,11 @@ describe('GraphEditorFloat', () => {
           toNodeName="Target Node"
         />
       );
-      expect(screen.getByText('active')).toBeInTheDocument();
+      // Status is now shown via connection line (solid for active, dashed for archived)
+      const connectionLine = screen.getByTestId('edge-connection-line');
+      expect(connectionLine).toBeInTheDocument();
+      // Active status = solid line (no dashed class)
+      expect(connectionLine).not.toHaveClass('border-dashed');
     });
 
     it('should call onSave with updated edge data', async () => {

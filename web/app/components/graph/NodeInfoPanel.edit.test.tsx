@@ -97,7 +97,7 @@ describe('NodeInfoPanel - Edge Editing', () => {
     expect(editButtons).toHaveLength(mockEdges.length);
   });
 
-  it('should display delete icon for each edge', () => {
+  it('should NOT display delete icon for edges', () => {
     render(
       <NodeInfoPanel
         id="node1"
@@ -116,9 +116,9 @@ describe('NodeInfoPanel - Edge Editing', () => {
       fireEvent.click(detailsElement.querySelector('summary')!);
     }
 
-    // Should have delete buttons for each edge
-    const deleteButtons = screen.getAllByLabelText(/delete connection/i);
-    expect(deleteButtons).toHaveLength(mockEdges.length);
+    // Should NOT have delete buttons
+    const deleteButtons = screen.queryAllByLabelText(/delete connection/i);
+    expect(deleteButtons).toHaveLength(0);
   });
 
   it('should call onEditEdge when edit icon is clicked', () => {
@@ -149,7 +149,7 @@ describe('NodeInfoPanel - Edge Editing', () => {
     expect(mockOnEditEdge).toHaveBeenCalledWith('edge1');
   });
 
-  it('should call onArchiveEdge when delete icon is clicked', () => {
+  it('should only show edit icon, not delete icon', () => {
     render(
       <NodeInfoPanel
         id="node1"
@@ -168,16 +168,16 @@ describe('NodeInfoPanel - Edge Editing', () => {
       fireEvent.click(detailsElement.querySelector('summary')!);
     }
 
-    // Click first delete button
-    const deleteButtons = screen.getAllByLabelText(/delete connection/i);
-    fireEvent.click(deleteButtons[0]);
+    // Should have edit buttons
+    const editButtons = screen.getAllByLabelText(/edit connection/i);
+    expect(editButtons).toHaveLength(mockEdges.length);
 
-    // Should call onArchiveEdge with edge ID
-    expect(mockOnArchiveEdge).toHaveBeenCalledTimes(1);
-    expect(mockOnArchiveEdge).toHaveBeenCalledWith('edge1');
+    // Should NOT have delete buttons
+    const deleteButtons = screen.queryAllByLabelText(/delete connection/i);
+    expect(deleteButtons).toHaveLength(0);
   });
 
-  it('should apply hover styles to edge rows', () => {
+  it('should apply readable hover styles with accent color to edge rows', () => {
     const { container } = render(
       <NodeInfoPanel
         id="node1"
@@ -200,9 +200,11 @@ describe('NodeInfoPanel - Edge Editing', () => {
     const edgeRows = container.querySelectorAll('[data-testid="edge-item"]');
     expect(edgeRows.length).toBeGreaterThan(0);
 
-    // Verify hover class is present
+    // Verify new hover class is present (accent color for better readability)
     edgeRows.forEach(row => {
-      expect(row.className).toContain('hover');
+      expect(row.className).toContain('hover:bg-accent/10');
+      // Should NOT contain old dark muted hover style
+      expect(row.className).not.toContain('hover:bg-muted');
     });
   });
 

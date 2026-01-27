@@ -251,12 +251,17 @@ export function GraphViewer({
   );
 
   /**
-   * Resolve node names for edge editor.
-   * Uses Cytoscape data to get node labels.
+   * Resolve node names and types for edge editor.
+   * Uses Cytoscape data to get node labels and types.
    */
-  const resolvedNodeNames = useMemo(() => {
+  const resolvedNodeData = useMemo(() => {
     if (!cyRef.current || !editor.entity || editor.entityType !== 'edge') {
-      return { fromNodeName: null, toNodeName: null };
+      return {
+        fromNodeName: null,
+        toNodeName: null,
+        fromNodeType: undefined,
+        toNodeType: undefined,
+      };
     }
 
     const edgeEntity = editor.entity as Doc<'graphEdges'>;
@@ -268,6 +273,8 @@ export function GraphViewer({
     return {
       fromNodeName: fromNode.length ? fromNode.data('label') : null,
       toNodeName: toNode.length ? toNode.data('label') : null,
+      fromNodeType: fromNode.length ? (fromNode.data('type') as NodeType) : undefined,
+      toNodeType: toNode.length ? (toNode.data('type') as NodeType) : undefined,
     };
   }, [editor.entity, editor.entityType]);
 
@@ -543,8 +550,10 @@ export function GraphViewer({
         sourceRect={editor.sourceRect}
         isLoading={editor.isLoading}
         error={editor.error}
-        fromNodeName={resolvedNodeNames.fromNodeName}
-        toNodeName={resolvedNodeNames.toNodeName}
+        fromNodeName={resolvedNodeData.fromNodeName}
+        toNodeName={resolvedNodeData.toNodeName}
+        fromNodeType={resolvedNodeData.fromNodeType}
+        toNodeType={resolvedNodeData.toNodeType}
         onSave={editor.save}
         onArchive={editor.archive}
         onClose={editor.close}

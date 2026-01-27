@@ -14,6 +14,8 @@ import type {
   GraphEntity,
 } from '../../hooks/useGraphEditor';
 import { RELATIONSHIP_TYPES } from './types';
+import type { NodeType } from './types';
+import { NODE_TYPE_COLORS } from '../../utils/nodeTypes';
 
 /**
  * Props for GraphEditorFloat component
@@ -35,6 +37,10 @@ interface GraphEditorFloatProps {
   fromNodeName: string | null;
   /** To node name (for edges) */
   toNodeName: string | null;
+  /** From node type (for edges) - used for badge coloring */
+  fromNodeType?: NodeType;
+  /** To node type (for edges) - used for badge coloring */
+  toNodeType?: NodeType;
   /** Callback when save is triggered */
   onSave: (data: EditableGraphEntity) => Promise<void>;
   /** Callback when archive/delete is triggered */
@@ -83,6 +89,8 @@ export function GraphEditorFloat({
   error,
   fromNodeName,
   toNodeName,
+  fromNodeType,
+  toNodeType,
   onSave,
   onArchive,
   onClose,
@@ -351,24 +359,51 @@ export function GraphEditorFloat({
             {/* Edge Fields */}
             {!isNode && edgeEntity && (
               <>
-                {/* From Node (read-only badge) */}
+                {/* Nodes Connection Display (Horizontal Layout) */}
                 <div>
                   <label className="block font-mono uppercase tracking-wide text-xs text-muted mb-2">
-                    From Node
+                    Connection
                   </label>
-                  <span className="inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm bg-muted text-paper">
-                    {fromNodeName || edgeEntity.fromNode}
-                  </span>
-                </div>
+                  <div
+                    data-testid="edge-nodes-container"
+                    className="flex items-center gap-2"
+                  >
+                    {/* From Node Badge */}
+                    <span
+                      data-testid="edge-from-node-badge"
+                      className={`inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm ${
+                        fromNodeType
+                          ? NODE_TYPE_COLORS[fromNodeType]
+                          : 'bg-muted text-paper'
+                      }`}
+                    >
+                      {fromNodeName || edgeEntity.fromNode}
+                    </span>
 
-                {/* To Node (read-only badge) */}
-                <div>
-                  <label className="block font-mono uppercase tracking-wide text-xs text-muted mb-2">
-                    To Node
-                  </label>
-                  <span className="inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm bg-muted text-paper">
-                    {toNodeName || edgeEntity.toNode}
-                  </span>
+                    {/* Connection Line Indicator */}
+                    <div
+                      data-testid="edge-connection-line"
+                      className={`flex-1 min-w-[40px] border-t-2 border-ink ${
+                        edgeEntity.status === 'archived' ? 'border-dashed' : ''
+                      } relative`}
+                    >
+                      <span className="absolute top-1/2 right-0 transform -translate-y-1/2 text-ink font-mono text-sm">
+                        →
+                      </span>
+                    </div>
+
+                    {/* To Node Badge */}
+                    <span
+                      data-testid="edge-to-node-badge"
+                      className={`inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm ${
+                        toNodeType
+                          ? NODE_TYPE_COLORS[toNodeType]
+                          : 'bg-muted text-paper'
+                      }`}
+                    >
+                      {toNodeName || edgeEntity.toNode}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Relationship (dropdown) */}
@@ -440,16 +475,6 @@ export function GraphEditorFloat({
                     placeholder="Additional context..."
                     disabled={isLoading}
                   />
-                </div>
-
-                {/* Status (read-only badge) */}
-                <div>
-                  <label className="block font-mono uppercase tracking-wide text-xs text-muted mb-2">
-                    Status
-                  </label>
-                  <span className="inline-block px-3 py-1.5 border-2 border-ink font-mono text-sm bg-accent text-paper uppercase">
-                    {edgeEntity.status}
-                  </span>
                 </div>
               </>
             )}
