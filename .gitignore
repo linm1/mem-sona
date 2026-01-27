@@ -100,3 +100,6 @@ docs/build/
 
 # Dead code report
 .reports/
+
+# Development mock files
+dashboard-mock.html

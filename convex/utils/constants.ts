@@ -79,17 +79,6 @@ export const PERFORMANCE_CONFIG = {
 } as const;
 
 /**
- * Helper function to convert days to milliseconds.
- * Useful for calculating dynamic time thresholds.
- *
- * @param days - Number of days to convert
- * @returns Milliseconds equivalent
- */
-export function daysToMs(days: number): number {
-  return days * 24 * 60 * 60 * 1000;
-}
-
-/**
  * Helper function to convert milliseconds to days.
  * Useful for logging and display.
  *

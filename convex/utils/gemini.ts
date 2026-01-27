@@ -6,12 +6,12 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 /**
  * Maximum retry attempts for Gemini API calls
  */
-export const MAX_RETRIES = 3;
+const MAX_RETRIES = 3;
 
 /**
  * Base delay in ms between retries (exponential backoff)
  */
-export const RETRY_DELAY_BASE = 1000;
+const RETRY_DELAY_BASE = 1000;
 
 /**
  * Helper function to call Gemini with retry logic.
